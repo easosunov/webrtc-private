@@ -1,4 +1,4 @@
-// js/websocket-client.js - COMPLETE VERSION
+// js/websocket-client.js - MODIFIED for password-only login
 const WebSocketClient = {
     connect() {
         console.log('Connecting:', CONFIG.wsUrl);
@@ -44,6 +44,18 @@ const WebSocketClient = {
                 
             case 'login-success':
                 AuthManager.handleLoginSuccess(data);
+                
+                // Find admin in connected users if not admin ourselves
+                if (!data.isAdmin) {
+                    setTimeout(() => {
+                        const adminUser = CONFIG.connectedUsers.find(u => u.isAdmin);
+                        if (adminUser) {
+                            CONFIG.adminSocketId = adminUser.userId; // Use userId, not socketId
+                            console.log('✅ Admin online:', CONFIG.adminSocketId);
+                            UIManager.showStatus('Admin online - ready to call');
+                        }
+                    }, 1000);
+                }
                 break;
                 
             case 'login-error':
@@ -53,20 +65,48 @@ const WebSocketClient = {
             case 'user-list':
                 CONFIG.connectedUsers = data.users || [];
                 UIManager.updateUsersList(CONFIG.connectedUsers);
+                
+                // Update admin tracking
+                if (!CONFIG.isAdmin) {
+                    const adminUser = CONFIG.connectedUsers.find(u => u.isAdmin);
+                    if (adminUser) {
+                        CONFIG.adminSocketId = adminUser.userId;
+                        console.log('✅ Admin online:', CONFIG.adminSocketId);
+                        UIManager.showStatus('Admin online - ready to call');
+                    } else {
+                        CONFIG.adminSocketId = null;
+                        console.log('⚠️ Admin offline');
+                    }
+                }
                 break;
                 
             case 'user-connected':
                 CONFIG.connectedUsers.push(data.user);
                 UIManager.updateUsersList(CONFIG.connectedUsers);
+                
+                // Check if connected user is admin
+                if (data.user.isAdmin && !CONFIG.isAdmin) {
+                    CONFIG.adminSocketId = data.user.userId;
+                    console.log('✅ Admin came online:', CONFIG.adminSocketId);
+                    UIManager.showStatus('Admin online - ready to call');
+                }
                 break;
                 
             case 'user-disconnected':
-                CONFIG.connectedUsers = CONFIG.connectedUsers.filter(u => u.id !== data.userId);
+                CONFIG.connectedUsers = CONFIG.connectedUsers.filter(u => u.userId !== data.userId);
                 UIManager.updateUsersList(CONFIG.connectedUsers);
+                
+                // Check if disconnected user was admin
+                if (data.userId === CONFIG.adminSocketId) {
+                    CONFIG.adminSocketId = null;
+                    console.log('⚠️ Admin went offline');
+                    UIManager.showStatus('Admin offline');
+                }
                 break;
                 
             case 'admin-online':
-                CONFIG.adminSocketId = data.adminSocketId;
+                // Legacy support - update to use userId
+                CONFIG.adminSocketId = data.adminId || data.userId || data.socketId;
                 console.log('✅ Admin online:', CONFIG.adminSocketId);
                 UIManager.showStatus('Admin online - ready to call');
                 break;
