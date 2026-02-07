@@ -1,4 +1,4 @@
-// js/webrtc-core.js - FIXED VERSION
+// js/webrtc-core.js - COMPLETE FIXED VERSION
 const WebRTCManager = {
     createPeerConnection() {
         console.log('🔗 Creating peer connection...');
@@ -19,14 +19,15 @@ const WebRTCManager = {
         // Initialize remote stream
         CONFIG.remoteStream = new MediaStream();
         
-        // Set up remote video element
+        // CRITICAL FIX: Attach EMPTY stream NOW (during user interaction)
         if (CONFIG.elements.remoteVideo) {
             CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
             CONFIG.elements.remoteVideo.muted = false;
             CONFIG.elements.remoteVideo.volume = 1.0;
+            console.log('✅ Pre-attached empty stream to remote video');
         }
         
-        // Add local tracks to peer connection
+        // Add local tracks
         if (CONFIG.localStream && CONFIG.hasMediaPermissions) {
             const audioTracks = CONFIG.localStream.getAudioTracks();
             const videoTracks = CONFIG.localStream.getVideoTracks();
@@ -34,94 +35,73 @@ const WebRTCManager = {
             console.log(`🎤 Local audio tracks: ${audioTracks.length}`);
             console.log(`🎥 Local video tracks: ${videoTracks.length}`);
             
-            // Add audio tracks
+            // Add audio
             audioTracks.forEach(track => {
                 try {
                     track.enabled = true;
                     CONFIG.peerConnection.addTrack(track, CONFIG.localStream);
                     console.log(`✅ Added AUDIO track: ${track.id.substring(0, 10)}...`);
                 } catch (error) {
-                    console.error('❌ Failed to add audio track:', error);
+                    console.error('❌ Failed to add audio:', error);
                 }
             });
             
-            // Add video tracks
+            // Add video
             videoTracks.forEach(track => {
                 try {
                     CONFIG.peerConnection.addTrack(track, CONFIG.localStream);
                     console.log(`✅ Added VIDEO track: ${track.id.substring(0, 10)}...`);
                 } catch (error) {
-                    console.error('❌ Failed to add video track:', error);
+                    console.error('❌ Failed to add video:', error);
                 }
             });
         }
-		
         
-        // Handle incoming tracks
-CONFIG.peerConnection.ontrack = (event) => {
-    console.log('🎬 ontrack event:', event.track.kind);
-    
-    if (event.track) {
-        CONFIG.remoteStream.addTrack(event.track);
-        
-        // Mark as in call
-        CONFIG.isInCall = true;
-        CONFIG.isProcessingAnswer = false;
-        
-        // Update UI
-        setTimeout(() => {
-            UIManager.showStatus('Call connected - click to play');
-            UIManager.updateCallButtons();
-        }, 100);
-        
-        // CRITICAL FIX: Don't try to play automatically
-        // Just attach the stream
-        if (CONFIG.elements.remoteVideo) {
-            CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
-            CONFIG.elements.remoteVideo.muted = false;
+        // Handle incoming tracks - SIMPLIFIED
+        CONFIG.peerConnection.ontrack = (event) => {
+            console.log('🎬 ontrack event:', event.track.kind);
             
-            // Show instruction to user
-            UIManager.showStatus('Click anywhere to play audio/video');
-        }
-    }
-};
-        
-CONFIG.peerConnection.onconnectionstatechange = () => {
-    console.log('🔗 Connection state:', CONFIG.peerConnection.connectionState);
-    
-    switch (CONFIG.peerConnection.connectionState) {
-        case 'connected':
-            console.log('✅ PEER CONNECTION CONNECTED!');
-            CONFIG.isInCall = true;  // SET THIS
-            CONFIG.isProcessingAnswer = false;
-            UIManager.showStatus('Call connected');
-            UIManager.updateCallButtons();
-            break;
-            
-        case 'disconnected':
-        case 'failed':
-        case 'closed':
-            console.log('❌ Peer connection ended');
-            if (CONFIG.peerConnection.connectionState === 'closed') {
-                CallManager.cleanupCall();
+            if (event.track) {
+                // Add track to pre-attached stream
+                CONFIG.remoteStream.addTrack(event.track);
+                
+                // Update call state
+                CONFIG.isInCall = true;
+                CONFIG.isProcessingAnswer = false;
+                
+                // Update UI
+                setTimeout(() => {
+                    UIManager.showStatus('Call connected');
+                    UIManager.updateCallButtons();
+                }, 100);
+                
+                console.log(`✅ Added ${event.track.kind} track to stream`);
+                
+                // Try to play if user already interacted
+                if (window.userAlreadyClicked && CONFIG.elements.remoteVideo) {
+                    setTimeout(() => {
+                        CONFIG.elements.remoteVideo.play()
+                            .then(() => console.log('✅ Auto-playing after previous click'))
+                            .catch(e => console.log('Auto-play still blocked:', e));
+                    }, 500);
+                }
             }
-            break;
-    }
-};
-        // ICE candidate handling - FIXED: include target and from
+        };
+        
+        // ICE candidate handling
         CONFIG.peerConnection.onicecandidate = (event) => {
             if (event.candidate && CONFIG.targetSocketId) {
                 console.log('🧊 Sending ICE candidate to', CONFIG.targetSocketId);
                 WebSocketClient.sendToServer({
                     type: 'ice-candidate',
-                    target: CONFIG.targetSocketId,  // Changed from targetSocketId
-                    from: CONFIG.myId,              // Added from
+                    target: CONFIG.targetSocketId,
+                    from: CONFIG.myId,
                     candidate: event.candidate
                 });
             }
         };
         
-        // Connection state monitoring
+        // Connection state
         CONFIG.peerConnection.onconnectionstatechange = () => {
             console.log('🔗 Connection state:', CONFIG.peerConnection.connectionState);
             
@@ -145,6 +125,11 @@ CONFIG.peerConnection.onconnectionstatechange = () => {
             }
         };
         
+        // Track ended event
+        CONFIG.peerConnection.onsignalingstatechange = () => {
+            console.log('📡 Signaling state:', CONFIG.peerConnection.signalingState);
+        };
+        
         console.log('✅ Peer connection created');
     },
     
@@ -162,7 +147,6 @@ CONFIG.peerConnection.onconnectionstatechange = () => {
                 offerToReceiveVideo: true
             });
             
-            // Check SDP
             if (offer.sdp) {
                 const hasAudio = offer.sdp.includes('m=audio');
                 const hasVideo = offer.sdp.includes('m=video');
@@ -172,11 +156,10 @@ CONFIG.peerConnection.onconnectionstatechange = () => {
             await CONFIG.peerConnection.setLocalDescription(offer);
             console.log('✅ Local description set');
             
-            // FIXED: Include target and from fields
             WebSocketClient.sendToServer({
                 type: 'offer',
-                target: CONFIG.targetSocketId,  // Changed from targetSocketId
-                from: CONFIG.myId,              // Added from
+                target: CONFIG.targetSocketId,
+                from: CONFIG.myId,
                 offer: offer
             });
             
@@ -192,7 +175,7 @@ CONFIG.peerConnection.onconnectionstatechange = () => {
     async handleOffer(data) {
         console.log('📥 Received offer from:', data.from || 'unknown');
         
-        // Set target if not already set
+        // Set target
         if (data.from && !CONFIG.targetSocketId) {
             CONFIG.targetSocketId = data.from;
             console.log('Set target to:', CONFIG.targetSocketId);
@@ -209,11 +192,10 @@ CONFIG.peerConnection.onconnectionstatechange = () => {
             const answer = await CONFIG.peerConnection.createAnswer();
             await CONFIG.peerConnection.setLocalDescription(answer);
             
-            // FIXED: Include target and from fields
             WebSocketClient.sendToServer({
                 type: 'answer',
-                target: data.from,      // Send back to the offer sender
-                from: CONFIG.myId,      // Our ID
+                target: data.from,
+                from: CONFIG.myId,
                 answer: answer
             });
             
@@ -286,20 +268,20 @@ CONFIG.peerConnection.onconnectionstatechange = () => {
         CONFIG.iceCandidatesQueue = [];
     },
     
-    checkAudioState() {
-        console.log('🔍 AUDIO STATE CHECK:');
+    // Debug function
+    checkMediaState() {
+        console.log('🔍 MEDIA STATE:');
         
         if (CONFIG.localStream) {
-            const localAudio = CONFIG.localStream.getAudioTracks();
-            console.log(`Local audio tracks: ${localAudio.length}`);
+            console.log(`Local - Audio: ${CONFIG.localStream.getAudioTracks().length}, Video: ${CONFIG.localStream.getVideoTracks().length}`);
         }
         
         if (CONFIG.remoteStream) {
-            const remoteAudio = CONFIG.remoteStream.getAudioTracks();
-            console.log(`Remote audio tracks: ${remoteAudio.length}`);
+            console.log(`Remote - Audio: ${CONFIG.remoteStream.getAudioTracks().length}, Video: ${CONFIG.remoteStream.getVideoTracks().length}`);
         }
         
         if (CONFIG.elements.remoteVideo) {
+            console.log(`Remote video srcObject: ${!!CONFIG.elements.remoteVideo.srcObject}`);
             console.log(`Remote video muted: ${CONFIG.elements.remoteVideo.muted}`);
         }
     }
