@@ -332,24 +332,63 @@ function setupGlobalFunctions() {
     console.log('Environment:', CONFIG.environment);
 })();
 
-window.playVideo = function() {
-    console.log('Playing videos...');
+async function playVideo() {
+    console.log('▶️ User clicked Play Videos - attempting to play media...');
     
-    if (CONFIG.elements.localVideo) {
-        CONFIG.elements.localVideo.play()
-            .then(() => console.log('Local video playing'))
-            .catch(e => console.log('Local video play error:', e));
+    try {
+        // LOCAL VIDEO - should already have stream
+        if (CONFIG.elements.localVideo && CONFIG.localStream) {
+            CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
+            CONFIG.elements.localVideo.muted = true; // Always mute local
+            
+            try {
+                await CONFIG.elements.localVideo.play();
+                console.log('✅ Local video playing');
+            } catch (e) {
+                console.log('⚠️ Local video play failed:', e);
+            }
+        }
+        
+        // REMOTE VIDEO - only attach if we have a stream
+        if (CONFIG.elements.remoteVideo && CONFIG.remoteStream) {
+            const tracks = CONFIG.remoteStream.getTracks();
+            console.log(`🔍 Remote stream has ${tracks.length} tracks`);
+            
+            if (tracks.length > 0) {
+                CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
+                CONFIG.elements.remoteVideo.muted = false; // CRITICAL: unmute for audio
+                
+                try {
+                    await CONFIG.elements.remoteVideo.play();
+                    console.log('✅ Remote video playing');
+                    
+                    // Check audio state
+                    const audioTracks = CONFIG.remoteStream.getAudioTracks();
+                    console.log(`🔊 Remote audio tracks: ${audioTracks.length}`);
+                    
+                    if (audioTracks.length > 0) {
+                        audioTracks[0].enabled = true;
+                        console.log('✅ Remote audio enabled');
+                    }
+                    
+                    UIManager.showStatus('Media playing successfully');
+                    
+                } catch (error) {
+                    console.error('❌ Failed to play remote media:', error);
+                    UIManager.showError(`Play failed: ${error.message}. Make sure call is connected first.`);
+                }
+            } else {
+                UIManager.showError('No remote media yet. Wait for call to connect.');
+            }
+        } else {
+            UIManager.showError('No remote stream available. Make sure call is connected.');
+        }
+        
+    } catch (error) {
+        console.error('❌ General play error:', error);
+        UIManager.showError(`Error: ${error.message}`);
     }
-    
-    if (CONFIG.elements.remoteVideo && CONFIG.elements.remoteVideo.srcObject) {
-        CONFIG.elements.remoteVideo.play()
-            .then(() => {
-                console.log('Remote video playing');
-                UIManager.showStatus('Call active - media playing');
-            })
-            .catch(e => console.log('Remote video play error:', e));
-    }
-};
+}
 
 // Add to main.js or directly in HTML
 document.addEventListener('click', function() {
