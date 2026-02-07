@@ -1,22 +1,24 @@
 // js/ui-manager.js - UPDATED
 const UIManager = {
-    init() {
-        // Store DOM elements
-        CONFIG.elements = {
-            loginDiv: document.getElementById('login'),
-            callDiv: document.getElementById('call'),
-            userView: document.getElementById('userView'),
-            adminView: document.getElementById('adminView'),
-            userList: document.getElementById('userList'),
-            localVideo: document.getElementById('localVideo'),
-            remoteVideo: document.getElementById('remoteVideo'),
-            statusEl: document.getElementById('status'),
-            // CHANGED: Single access code input instead of username+password
-            accessCodeInput: document.getElementById('accessCode')
-        };
-        
-        console.log('UI Manager initialized');
-    },
+
+init() {
+    // Store DOM elements
+    CONFIG.elements = {
+        loginDiv: document.getElementById('login'),
+        callDiv: document.getElementById('call'),
+        userView: document.getElementById('userView'),
+        adminView: document.getElementById('adminView'),
+        userList: document.getElementById('userList'),
+        localVideo: document.getElementById('localVideo'),
+        remoteVideo: document.getElementById('remoteVideo'),
+        statusEl: document.getElementById('status'),
+        // CHANGED: Use hidden input for access code
+        accessCodeInput: document.getElementById('hiddenAccessCode')
+    };
+    
+    console.log('UI Manager initialized');
+}
+
     
     showStatus(message) {
         console.log('Status:', message);
