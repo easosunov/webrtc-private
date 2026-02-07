@@ -16,6 +16,7 @@
  <style>
     * {
         box-sizing: border-box;
+        touch-action: manipulation;
     }
     
     body { 
@@ -27,28 +28,79 @@
         min-height: 100vh;
         display: flex;
         flex-direction: column;
+        overflow-x: hidden;
     }
     
-    video { 
-        width: 300px; 
-        border: 1px solid #ccc; 
-        margin: 10px; 
-        background: #000;
-    }
-    
-    #login { 
-        margin: 20px auto; 
-        padding: 30px 20px; 
-        border: 1px solid #ddd; 
-        background: white;
-        border-radius: 15px;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        max-width: 400px;
+    /* Video container */
+    .video-container {
+        position: relative;
         width: 100%;
+        margin: 10px 0;
+        min-height: 300px;
     }
     
-    #call { 
-        display: none; /* Controlled by CSS, overridden by JS */
+    /* Main remote video */
+    #remoteVideo { 
+        width: 100%; 
+        max-width: 100%;
+        height: auto;
+        background: #000;
+        border-radius: 10px;
+        display: block;
+    }
+    
+    /* Draggable local video preview */
+    #localVideo {
+        position: fixed !important;
+        width: 120px !important;
+        height: 160px !important;
+        background: #000;
+        border: 2px solid white;
+        box-shadow: 0 0 15px rgba(0,0,0,0.7);
+        border-radius: 8px;
+        z-index: 1000;
+        cursor: move;
+        touch-action: none; /* Important for drag on mobile */
+        resize: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+    }
+    
+    /* Drag handle (invisible overlay) */
+    .drag-handle {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        cursor: move;
+        z-index: 1001;
+    }
+    
+    /* Close/minimize button for local video */
+    .local-video-controls {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        z-index: 1002;
+        display: flex;
+        gap: 5px;
+    }
+    
+    .video-control-btn {
+        width: 25px;
+        height: 25px;
+        border-radius: 50%;
+        background: rgba(0,0,0,0.7);
+        color: white;
+        border: none;
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
     }
     
     /* Hidden buttons - present in DOM but invisible to users */
@@ -64,6 +116,21 @@
         margin: 0 !important;
         border: 0 !important;
         overflow: hidden !important;
+    }
+    
+    #login { 
+        margin: 20px auto; 
+        padding: 30px 20px; 
+        border: 1px solid #ddd; 
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        max-width: 400px;
+        width: 100%;
+    }
+    
+    #call { 
+        display: none; /* Controlled by CSS, overridden by JS */
     }
     
     /* Phone Keypad Styles */
@@ -215,7 +282,7 @@
         font-weight: bold;
     }
     
-    button:not(.keypad-btn):not(.clear-btn):not(.hidden-button) {
+    button:not(.keypad-btn):not(.clear-btn):not(.hidden-button):not(.video-control-btn) {
         margin: 0 5px;
         padding: 8px 15px;
         cursor: pointer;
@@ -225,7 +292,7 @@
         color: white;
     }
     
-    button:disabled:not(.keypad-btn):not(.clear-btn):not(.hidden-button) {
+    button:disabled:not(.keypad-btn):not(.clear-btn):not(.hidden-button):not(.video-control-btn) {
         background: #ccc !important;
         cursor: not-allowed;
     }
@@ -258,30 +325,17 @@
         margin-bottom: 15px;
     }
     
-    /* Android specific fixes */
+    /* Mobile specific styles */
     @media (max-width: 768px) {
-        video {
+        #remoteVideo {
             width: 100% !important;
-            max-width: 100% !important;
-            height: auto;
-            background: #000;
+            height: calc(100vh - 250px) !important;
+            object-fit: cover;
         }
         
         #localVideo {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            width: 120px !important;
-            height: 160px !important;
-            z-index: 1000;
-            border: 2px solid white;
-            box-shadow: 0 0 10px rgba(0,0,0,0.5);
-        }
-        
-        #remoteVideo {
-            width: 100% !important;
-            height: calc(100vh - 200px) !important;
-            object-fit: cover;
+            width: 100px !important;
+            height: 133px !important;
         }
         
         .keypad-btn {
@@ -311,9 +365,9 @@
             gap: 10px;
         }
         
-        video {
-            width: 100%;
-            max-width: 300px;
+        #localVideo {
+            width: 90px !important;
+            height: 120px !important;
         }
     }
     
@@ -324,6 +378,11 @@
         
         #accessCodeDisplay {
             font-size: 1.8rem;
+        }
+        
+        #localVideo {
+            width: 80px !important;
+            height: 107px !important;
         }
     }
 </style>
@@ -429,9 +488,14 @@
         
         <div style="margin-top: 30px; border-top: 2px solid #eee; padding-top: 20px;">
             <h4>Video Call</h4>
-            <div>
-                <video id="localVideo" autoplay playsinline muted></video>
+            <div class="video-container">
                 <video id="remoteVideo" autoplay playsinline></video>
+                <!-- Local video is now positioned absolutely and draggable -->
+                <video id="localVideo" autoplay playsinline muted></video>
+                <div class="drag-handle" id="localVideoDragHandle"></div>
+                <div class="local-video-controls">
+                    <button class="video-control-btn" onclick="toggleLocalVideo()" title="Hide/Show">👁</button>
+                </div>
             </div>
             <!-- Hidden Play Videos button (available in DOM but invisible) -->
             <button onclick="playVideo()" class="hidden-button" id="playVideoBtn">Play Videos</button>
@@ -533,7 +597,148 @@
             });
         }
         
-        // Keyboard support
+        // Draggable local video functionality
+        function makeLocalVideoDraggable() {
+            const localVideo = document.getElementById('localVideo');
+            const dragHandle = document.getElementById('localVideoDragHandle');
+            
+            if (!localVideo || !dragHandle) return;
+            
+            let isDragging = false;
+            let currentX;
+            let currentY;
+            let initialX;
+            let initialY;
+            let xOffset = 0;
+            let yOffset = 0;
+            
+            // Set initial position (top-right corner)
+            localVideo.style.top = '20px';
+            localVideo.style.right = '20px';
+            localVideo.style.left = 'auto';
+            
+            // Mouse/touch events
+            dragHandle.addEventListener('mousedown', dragStart);
+            dragHandle.addEventListener('touchstart', dragStart, { passive: false });
+            
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('touchmove', drag, { passive: false });
+            
+            document.addEventListener('mouseup', dragEnd);
+            document.addEventListener('touchend', dragEnd);
+            document.addEventListener('touchcancel', dragEnd);
+            
+            function dragStart(e) {
+                e.preventDefault();
+                
+                if (e.type === 'touchstart') {
+                    initialX = e.touches[0].clientX - xOffset;
+                    initialY = e.touches[0].clientY - yOffset;
+                } else {
+                    initialX = e.clientX - xOffset;
+                    initialY = e.clientY - yOffset;
+                }
+                
+                if (e.target === dragHandle || e.target === localVideo) {
+                    isDragging = true;
+                    
+                    // Bring to front
+                    localVideo.style.zIndex = '10000';
+                    
+                    // Add dragging class for visual feedback
+                    localVideo.style.boxShadow = '0 0 20px rgba(0,0,0,0.9)';
+                    localVideo.style.border = '3px solid #4CAF50';
+                }
+            }
+            
+            function drag(e) {
+                if (!isDragging) return;
+                e.preventDefault();
+                
+                if (e.type === 'touchmove') {
+                    currentX = e.touches[0].clientX - initialX;
+                    currentY = e.touches[0].clientY - initialY;
+                } else {
+                    currentX = e.clientX - initialX;
+                    currentY = e.clientY - initialY;
+                }
+                
+                xOffset = currentX;
+                yOffset = currentY;
+                
+                // Convert to CSS properties
+                // Use transform for better performance on mobile
+                localVideo.style.transform = `translate(${currentX}px, ${currentY}px)`;
+            }
+            
+            function dragEnd(e) {
+                e.preventDefault();
+                initialX = currentX;
+                initialY = currentY;
+                isDragging = false;
+                
+                // Remove visual feedback
+                localVideo.style.boxShadow = '0 0 15px rgba(0,0,0,0.7)';
+                localVideo.style.border = '2px solid white';
+                
+                // Store final position
+                setTimeout(() => {
+                    if (!isDragging) {
+                        // Convert transform to absolute positioning for stability
+                        const transform = localVideo.style.transform;
+                        if (transform) {
+                            const match = transform.match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/);
+                            if (match) {
+                                localVideo.style.transform = '';
+                                localVideo.style.position = 'fixed';
+                                localVideo.style.left = `${match[1]}px`;
+                                localVideo.style.top = `${match[2]}px`;
+                                localVideo.style.right = 'auto';
+                            }
+                        }
+                    }
+                }, 10);
+            }
+            
+            // Make sure video stays within bounds on resize
+            window.addEventListener('resize', function() {
+                const rect = localVideo.getBoundingClientRect();
+                const windowWidth = window.innerWidth;
+                const windowHeight = window.innerHeight;
+                
+                // Adjust if video is outside viewport
+                if (rect.right > windowWidth || rect.bottom > windowHeight || rect.left < 0 || rect.top < 0) {
+                    localVideo.style.left = '20px';
+                    localVideo.style.top = '20px';
+                    localVideo.style.right = 'auto';
+                    localVideo.style.transform = '';
+                }
+            });
+        }
+        
+        // Toggle local video visibility
+        function toggleLocalVideo() {
+            const localVideo = document.getElementById('localVideo');
+            const dragHandle = document.getElementById('localVideoDragHandle');
+            
+            if (localVideo.style.opacity === '0' || localVideo.style.display === 'none') {
+                // Show
+                localVideo.style.opacity = '1';
+                localVideo.style.display = 'block';
+                dragHandle.style.display = 'block';
+            } else {
+                // Hide
+                localVideo.style.opacity = '0';
+                dragHandle.style.display = 'none';
+                
+                // Keep it in DOM but invisible
+                setTimeout(() => {
+                    localVideo.style.display = 'none';
+                }, 300);
+            }
+        }
+        
+        // Initialize draggable video when page loads
         document.addEventListener('DOMContentLoaded', function() {
             const hiddenInput = document.getElementById('hiddenAccessCode');
             
@@ -599,7 +804,29 @@
             // Initialize display
             updateDisplay();
             hiddenInput.focus();
+            
+            // Initialize draggable video (will be available when call screen loads)
+            setTimeout(makeLocalVideoDraggable, 1000);
         });
+        
+        // Override or extend the showCallScreen function to init draggable video
+        const originalShowCallScreen = UIManager.showCallScreen;
+        UIManager.showCallScreen = function() {
+            originalShowCallScreen.call(this);
+            
+            // Initialize draggable video after call screen is shown
+            setTimeout(() => {
+                makeLocalVideoDraggable();
+                
+                // Position local video initially
+                const localVideo = document.getElementById('localVideo');
+                if (localVideo) {
+                    localVideo.style.top = '20px';
+                    localVideo.style.right = '20px';
+                    localVideo.style.left = 'auto';
+                }
+            }, 500);
+        };
     </script>
 </body>
 </html>
