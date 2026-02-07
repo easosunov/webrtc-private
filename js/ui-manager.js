@@ -1,4 +1,4 @@
-// js/ui-manager.js - UPDATED
+// js/ui-manager.js - COMPLETE VERSION with Resolution Controls
 const UIManager = {
     init() {
         // Store DOM elements
@@ -12,11 +12,27 @@ const UIManager = {
             remoteVideo: document.getElementById('remoteVideo'),
             statusEl: document.getElementById('status'),
             // Use hidden input for access code
-            accessCodeInput: document.getElementById('hiddenAccessCode')
+            accessCodeInput: document.getElementById('hiddenAccessCode'),
+            // NEW: Resolution controls
+            resolutionControls: document.getElementById('resolutionControls'),
+            resolutionSelect: document.getElementById('resolutionSelect'),
+            applyResolutionBtn: document.getElementById('applyResolution')
         };
         
         // Initialize admin status to offline
         CONFIG.adminSocketId = null;
+        
+        // NEW: Initialize resolution settings
+        CONFIG.videoConstraints = {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            frameRate: { ideal: 30 }
+        };
+        CONFIG.audioEnabled = true;
+        CONFIG.videoEnabled = true;
+        
+        // NEW: Setup resolution control event listeners
+        this.setupResolutionControls();
         
         console.log('UI Manager initialized');
     },
@@ -80,15 +96,15 @@ const UIManager = {
             const hangupBtn = document.querySelector('.btn-hangup');
             
             if (callBtn) {
-                // Determine admin availability
-                const isAdminAvailable = CONFIG.adminSocketId !== null && 
+                // FIXED: Check if adminSocketId is null (admin offline)
+                const isAdminAvailable = CONFIG.adminSocketId && 
                                         !CONFIG.isInCall && 
                                         !CONFIG.isProcessingAnswer;
                 
                 callBtn.disabled = !isAdminAvailable;
                 
-                // Update button text and style based on state
-                if (CONFIG.adminSocketId === null) {
+                // FIXED: Update button text based on admin availability
+                if (!CONFIG.adminSocketId) {
                     callBtn.textContent = 'Admin Offline';
                     callBtn.className = 'btn-call disabled';
                 } else if (CONFIG.isInCall) {
@@ -122,9 +138,167 @@ const UIManager = {
         }
     },
     
+    // NEW: Setup resolution controls
+    setupResolutionControls() {
+        if (CONFIG.elements.applyResolutionBtn) {
+            CONFIG.elements.applyResolutionBtn.addEventListener('click', () => {
+                this.changeVideoResolution();
+            });
+        }
+        
+        if (CONFIG.elements.resolutionSelect) {
+            CONFIG.elements.resolutionSelect.addEventListener('change', (e) => {
+                // Optional: Apply immediately on change instead of needing Apply button
+                // this.changeVideoResolution();
+            });
+        }
+    },
+    
+    // NEW: Show/hide resolution controls
+    toggleResolutionControls(show) {
+        if (CONFIG.elements.resolutionControls) {
+            CONFIG.elements.resolutionControls.style.display = show ? 'block' : 'none';
+        }
+    },
+    
+    // NEW: Change video resolution
+    async changeVideoResolution() {
+        if (!CONFIG.elements.resolutionSelect) return;
+        
+        const resolution = CONFIG.elements.resolutionSelect.value;
+        
+        // Define constraints based on selection
+        let newConstraints = {};
+        
+        switch (resolution) {
+            case 'audio-only':
+                CONFIG.videoEnabled = false;
+                CONFIG.audioEnabled = true;
+                newConstraints = { 
+                    audio: true,
+                    video: false 
+                };
+                break;
+                
+            case 'low':
+                CONFIG.videoEnabled = true;
+                CONFIG.audioEnabled = true;
+                newConstraints = { 
+                    audio: true,
+                    video: { 
+                        width: { ideal: 320 },
+                        height: { ideal: 240 },
+                        frameRate: { ideal: 15 }
+                    }
+                };
+                break;
+                
+            case 'medium':
+                CONFIG.videoEnabled = true;
+                CONFIG.audioEnabled = true;
+                newConstraints = { 
+                    audio: true,
+                    video: { 
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        frameRate: { ideal: 30 }
+                    }
+                };
+                break;
+                
+            case 'high':
+                CONFIG.videoEnabled = true;
+                CONFIG.audioEnabled = true;
+                newConstraints = { 
+                    audio: true,
+                    video: { 
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        frameRate: { ideal: 30 }
+                    }
+                };
+                break;
+                
+            case 'full-hd':
+                CONFIG.videoEnabled = true;
+                CONFIG.audioEnabled = true;
+                newConstraints = { 
+                    audio: true,
+                    video: { 
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                        frameRate: { ideal: 30 }
+                    }
+                };
+                break;
+        }
+        
+        // Store the constraints
+        CONFIG.videoConstraints = newConstraints.video || false;
+        
+        try {
+            // If in a call, we need to renegotiate
+            if (CONFIG.inCall && CONFIG.peerConnection && CONFIG.localStream) {
+                // Get new media stream
+                const newStream = await navigator.mediaDevices.getUserMedia(newConstraints);
+                
+                // Stop old tracks
+                CONFIG.localStream.getTracks().forEach(track => track.stop());
+                
+                // Replace local stream
+                CONFIG.localStream = newStream;
+                
+                // Update local video element
+                if (CONFIG.elements.localVideo) {
+                    CONFIG.elements.localVideo.srcObject = newStream;
+                    CONFIG.elements.localVideo.style.display = CONFIG.videoEnabled ? 'block' : 'none';
+                }
+                
+                // Replace tracks in peer connection
+                const senders = CONFIG.peerConnection.getSenders();
+                
+                newStream.getTracks().forEach(track => {
+                    const sender = senders.find(s => s.track && s.track.kind === track.kind);
+                    if (sender) {
+                        sender.replaceTrack(track);
+                    } else {
+                        // Add new track if not present
+                        CONFIG.peerConnection.addTrack(track, newStream);
+                    }
+                });
+                
+                console.log(`✅ Resolution changed to: ${resolution}`);
+                this.showStatus(`Quality: ${this.getResolutionName(resolution)}`);
+            } else {
+                // Not in a call, just update settings for next call
+                CONFIG.videoConstraints = newConstraints.video || false;
+                console.log(`✅ Resolution settings updated to: ${resolution} (will apply on next call)`);
+                this.showStatus(`Quality set to: ${this.getResolutionName(resolution)}`);
+            }
+        } catch (error) {
+            console.error('Error changing resolution:', error);
+            this.showError(`Failed to change resolution: ${error.message}`);
+        }
+    },
+    
+    // NEW: Helper to get resolution display name
+    getResolutionName(resolution) {
+        const names = {
+            'audio-only': 'Audio Only',
+            'low': 'Low (320x240)',
+            'medium': 'Medium (640x480)',
+            'high': 'High (1280x720)',
+            'full-hd': 'Full HD (1920x1080)'
+        };
+        return names[resolution] || resolution;
+    },
+    
     showLoginScreen() {
         CONFIG.elements.loginDiv.style.display = 'block';
         CONFIG.elements.callDiv.style.display = 'none';
+        
+        // NEW: Hide resolution controls when in login screen
+        this.toggleResolutionControls(false);
     },
     
     showCallScreen() {
@@ -140,6 +314,9 @@ const UIManager = {
             CONFIG.elements.adminView.style.display = 'none';
             document.querySelector('h2').textContent = 'WebRTC - ' + CONFIG.myUsername;
         }
+        
+        // NEW: Show resolution controls when in call screen
+        this.toggleResolutionControls(true);
         
         // Update buttons after showing call screen
         this.updateCallButtons();
