@@ -351,6 +351,15 @@ window.playVideo = function() {
     }
 };
 
+// Add to main.js or directly in HTML
+document.addEventListener('click', function() {
+    if (CONFIG.elements.remoteVideo && CONFIG.elements.remoteVideo.srcObject) {
+        CONFIG.elements.remoteVideo.play()
+            .then(() => console.log('Video playing after user click'))
+            .catch(e => console.log('Play still blocked:', e));
+    }
+});
+
 // Export for testing (if needed)
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
