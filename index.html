@@ -36,22 +36,40 @@
         background: #000;
     }
     
-    #login { 
-        margin: 20px auto; 
-        padding: 30px 20px; 
-        border: 1px solid #ddd; 
-        background: white;
-        border-radius: 15px;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        max-width: 400px;
+    /* Make local video draggable */
+    #localVideo {
+        position: fixed !important;
+        width: 120px !important;
+        height: 160px !important;
+        background: #000;
+        border: 2px solid white;
+        box-shadow: 0 0 15px rgba(0,0,0,0.7);
+        border-radius: 8px;
+        z-index: 1000;
+        cursor: move;
+        top: 20px;
+        right: 20px;
+        user-select: none;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+    }
+    
+    /* Remote video full width */
+    #remoteVideo {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+    }
+    
+    /* Container for videos */
+    .video-container {
+        position: relative;
         width: 100%;
+        margin-top: 20px;
     }
     
-    #call { 
-        display: none; /* Controlled by CSS, overridden by JS */
-    }
-    
-    /* Hidden buttons - present in DOM but invisible to users */
+    /* Hidden buttons */
     .hidden-button {
         display: none !important;
         visibility: hidden !important;
@@ -64,6 +82,21 @@
         margin: 0 !important;
         border: 0 !important;
         overflow: hidden !important;
+    }
+    
+    #login { 
+        margin: 20px auto; 
+        padding: 30px 20px; 
+        border: 1px solid #ddd; 
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        max-width: 400px;
+        width: 100%;
+    }
+    
+    #call { 
+        display: none;
     }
     
     /* Phone Keypad Styles */
@@ -258,29 +291,14 @@
         margin-bottom: 15px;
     }
     
-    /* Android specific fixes */
     @media (max-width: 768px) {
-        video {
-            width: 100% !important;
-            max-width: 100% !important;
-            height: auto;
-            background: #000;
-        }
-        
         #localVideo {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            width: 120px !important;
-            height: 160px !important;
-            z-index: 1000;
-            border: 2px solid white;
-            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            width: 100px !important;
+            height: 133px !important;
         }
         
         #remoteVideo {
-            width: 100% !important;
-            height: calc(100vh - 200px) !important;
+            height: calc(100vh - 250px) !important;
             object-fit: cover;
         }
         
@@ -309,11 +327,6 @@
         
         .keypad {
             gap: 10px;
-        }
-        
-        video {
-            width: 100%;
-            max-width: 300px;
         }
     }
     
@@ -429,17 +442,18 @@
         
         <div style="margin-top: 30px; border-top: 2px solid #eee; padding-top: 20px;">
             <h4>Video Call</h4>
-            <div>
-                <video id="localVideo" autoplay playsinline muted></video>
+            <div class="video-container">
                 <video id="remoteVideo" autoplay playsinline></video>
+                <!-- Local video is draggable -->
+                <video id="localVideo" autoplay playsinline muted></video>
             </div>
-            <!-- Hidden Play Videos button (available in DOM but invisible) -->
+            <!-- Hidden Play Videos button -->
             <button onclick="playVideo()" class="hidden-button" id="playVideoBtn">Play Videos</button>
         </div>
         
         <div style="margin-top: 20px;">
             <button onclick="logout()" style="background: #ff4444; color: white;">Logout</button>
-            <!-- Hidden Debug button (available in DOM but invisible) -->
+            <!-- Hidden Debug button -->
             <button onclick="debug()" class="hidden-button">Debug</button>
         </div>
     </div>
@@ -456,7 +470,6 @@
         function addToCode(char) {
             accessCode += char;
             updateDisplay();
-            // Also update hidden input for keyboard compatibility
             document.getElementById('hiddenAccessCode').value = accessCode;
         }
         
@@ -479,8 +492,6 @@
                 display.textContent = 'Enter Code';
                 display.style.color = '#999';
             } else {
-                // Show as dots for security (optional) or show actual numbers
-                // For simplicity, showing actual numbers:
                 display.textContent = accessCode;
                 display.style.color = '#333';
             }
@@ -492,18 +503,15 @@
                 return;
             }
             
-            // Set the access code in the UI manager
             if (CONFIG.elements && CONFIG.elements.accessCodeInput) {
                 CONFIG.elements.accessCodeInput.value = accessCode;
             }
             
-            // Call the login function
             AuthManager.login();
         }
         
-        // Play Videos function (for Android compatibility)
+        // Play Videos function
         function playVideo() {
-            // Try to play both videos
             const localVideo = document.getElementById('localVideo');
             const remoteVideo = document.getElementById('remoteVideo');
             
@@ -520,20 +528,118 @@
             }
         }
         
-        // Debug function (available but hidden)
+        // Debug function
         function debug() {
             if (typeof CONFIG !== 'undefined' && CONFIG.debug) {
                 CONFIG.debug();
             }
-            console.log('Debug info:', {
-                accessCode: accessCode,
-                config: CONFIG,
-                uiManager: typeof UIManager,
-                authManager: typeof AuthManager
-            });
+            console.log('Debug info:', { accessCode: accessCode });
         }
         
-        // Keyboard support
+        // Simple draggable video - NO changes to existing login code
+        function initDraggableVideo() {
+            const localVideo = document.getElementById('localVideo');
+            if (!localVideo) return;
+            
+            let isDragging = false;
+            let startX, startY, startLeft, startTop;
+            
+            // Make video draggable
+            localVideo.addEventListener('mousedown', startDrag);
+            localVideo.addEventListener('touchstart', startDrag, { passive: false });
+            
+            function startDrag(e) {
+                e.preventDefault();
+                isDragging = true;
+                
+                // Get starting positions
+                if (e.type === 'touchstart') {
+                    startX = e.touches[0].clientX;
+                    startY = e.touches[0].clientY;
+                } else {
+                    startX = e.clientX;
+                    startY = e.clientY;
+                }
+                
+                const rect = localVideo.getBoundingClientRect();
+                startLeft = rect.left;
+                startTop = rect.top;
+                
+                // Add move and end listeners
+                document.addEventListener('mousemove', drag);
+                document.addEventListener('mouseup', stopDrag);
+                document.addEventListener('touchmove', drag, { passive: false });
+                document.addEventListener('touchend', stopDrag);
+                
+                // Visual feedback
+                localVideo.style.border = '3px solid #4CAF50';
+                localVideo.style.boxShadow = '0 0 20px rgba(0,0,0,0.9)';
+            }
+            
+            function drag(e) {
+                if (!isDragging) return;
+                e.preventDefault();
+                
+                let clientX, clientY;
+                if (e.type === 'touchmove') {
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                } else {
+                    clientX = e.clientX;
+                    clientY = e.clientY;
+                }
+                
+                // Calculate new position
+                const deltaX = clientX - startX;
+                const deltaY = clientY - startY;
+                const newLeft = startLeft + deltaX;
+                const newTop = startTop + deltaY;
+                
+                // Apply new position
+                localVideo.style.left = newLeft + 'px';
+                localVideo.style.top = newTop + 'px';
+                localVideo.style.right = 'auto';
+            }
+            
+            function stopDrag() {
+                isDragging = false;
+                
+                // Remove listeners
+                document.removeEventListener('mousemove', drag);
+                document.removeEventListener('mouseup', stopDrag);
+                document.removeEventListener('touchmove', drag);
+                document.removeEventListener('touchend', stopDrag);
+                
+                // Restore normal style
+                localVideo.style.border = '2px solid white';
+                localVideo.style.boxShadow = '0 0 15px rgba(0,0,0,0.7)';
+                
+                // Keep within screen bounds
+                const rect = localVideo.getBoundingClientRect();
+                const windowWidth = window.innerWidth;
+                const windowHeight = window.innerHeight;
+                
+                if (rect.right > windowWidth) {
+                    localVideo.style.left = (windowWidth - rect.width - 10) + 'px';
+                }
+                if (rect.bottom > windowHeight) {
+                    localVideo.style.top = (windowHeight - rect.height - 10) + 'px';
+                }
+                if (rect.left < 0) {
+                    localVideo.style.left = '10px';
+                }
+                if (rect.top < 0) {
+                    localVideo.style.top = '10px';
+                }
+            }
+            
+            // Set initial position
+            localVideo.style.position = 'fixed';
+            localVideo.style.top = '20px';
+            localVideo.style.right = '20px';
+        }
+        
+        // Initialize everything when page loads
         document.addEventListener('DOMContentLoaded', function() {
             const hiddenInput = document.getElementById('hiddenAccessCode');
             
@@ -550,55 +656,51 @@
             
             // Handle key presses
             hiddenInput.addEventListener('keydown', function(e) {
-                // Allow only numbers, +, # and control keys
                 if (!/[0-9+#]/.test(e.key) && 
                     !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'].includes(e.key)) {
                     e.preventDefault();
                 }
                 
-                // Submit on Enter
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     submitCode();
                 }
                 
-                // Clear on Escape
                 if (e.key === 'Escape') {
                     e.preventDefault();
                     clearCode();
                 }
             });
             
-            // Also allow direct key presses on the page
+            // Allow direct key presses
             document.addEventListener('keydown', function(e) {
-                // If not focused in another input
                 if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-                    // Number keys
                     if (/[0-9+#]/.test(e.key)) {
                         e.preventDefault();
                         addToCode(e.key);
-                    }
-                    // Enter to submit
-                    else if (e.key === 'Enter') {
+                    } else if (e.key === 'Enter') {
                         e.preventDefault();
                         submitCode();
-                    }
-                    // Backspace to delete
-                    else if (e.key === 'Backspace') {
+                    } else if (e.key === 'Backspace') {
                         e.preventDefault();
                         backspaceCode();
-                    }
-                    // Escape to clear
-                    else if (e.key === 'Escape') {
+                    } else if (e.key === 'Escape') {
                         e.preventDefault();
                         clearCode();
                     }
                 }
             });
             
-            // Initialize display
+            // Initialize
             updateDisplay();
             hiddenInput.focus();
+            
+            // Initialize draggable video when call screen is shown
+            const originalShowCallScreen = UIManager.showCallScreen;
+            UIManager.showCallScreen = function() {
+                originalShowCallScreen.call(this);
+                setTimeout(initDraggableVideo, 100);
+            };
         });
     </script>
 </body>
