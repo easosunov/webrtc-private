@@ -1,4 +1,4 @@
-// js/ui-manager.js - UPDATED for password-only login
+// js/ui-manager.js - UPDATED
 const UIManager = {
     init() {
         // Store DOM elements
@@ -11,7 +11,8 @@ const UIManager = {
             localVideo: document.getElementById('localVideo'),
             remoteVideo: document.getElementById('remoteVideo'),
             statusEl: document.getElementById('status'),
-            passwordInput: document.getElementById('passwordInput')  // Changed to passwordInput
+            usernameInput: document.getElementById('username'),
+            passwordInput: document.getElementById('password')
         };
         
         console.log('UI Manager initialized');
@@ -41,13 +42,13 @@ const UIManager = {
         }
         
         users.forEach(user => {
-            if (user.userId === CONFIG.myId) return;
+            if (user.id === CONFIG.myId) return;
             
             const div = document.createElement('div');
             div.className = 'user-line';
             div.innerHTML = `
                 <span class="username">${user.username} ${user.isAdmin ? '(Admin)' : ''}</span>
-                <button class="btn-call" onclick="callUser('${user.userId}', '${user.userId}')">Call</button>
+                <button class="btn-call" onclick="callUser('${user.username}', '${user.socketId}')">Call</button>
                 <button class="btn-hangup" onclick="hangup()" disabled>Hang Up</button>
             `;
             userList.appendChild(div);
@@ -90,10 +91,6 @@ const UIManager = {
     showLoginScreen() {
         CONFIG.elements.loginDiv.style.display = 'block';
         CONFIG.elements.callDiv.style.display = 'none';
-        // Clear password field on logout
-        if (CONFIG.elements.passwordInput) {
-            CONFIG.elements.passwordInput.value = '';
-        }
     },
     
     showCallScreen() {
@@ -103,11 +100,11 @@ const UIManager = {
         if (CONFIG.isAdmin) {
             CONFIG.elements.userView.style.display = 'none';
             CONFIG.elements.adminView.style.display = 'block';
-            document.querySelector('h2').textContent = 'Administrator Mode';
+            document.querySelector('h2').textContent = 'WebRTC - Administrator';
         } else {
             CONFIG.elements.userView.style.display = 'block';
             CONFIG.elements.adminView.style.display = 'none';
-            document.querySelector('h2').textContent = 'User Mode - ' + CONFIG.myUsername;
+            document.querySelector('h2').textContent = 'WebRTC - ' + CONFIG.myUsername;
         }
     }
 };
