@@ -59,34 +59,29 @@ const WebRTCManager = {
         
         // Handle incoming tracks
 CONFIG.peerConnection.ontrack = (event) => {
-    console.log('🎬 ontrack event:', event.track.kind, 'from', event.streams.length, 'streams');
+    console.log('🎬 ontrack event:', event.track.kind);
     
     if (event.track) {
-        // Add track to our remote stream
         CONFIG.remoteStream.addTrack(event.track);
         
-        // CRITICAL: Mark as in call
+        // Mark as in call
         CONFIG.isInCall = true;
         CONFIG.isProcessingAnswer = false;
         
         // Update UI
         setTimeout(() => {
-            UIManager.showStatus('Call connected');
+            UIManager.showStatus('Call connected - click to play');
             UIManager.updateCallButtons();
         }, 100);
         
-        // Update remote video element
+        // CRITICAL FIX: Don't try to play automatically
+        // Just attach the stream
         if (CONFIG.elements.remoteVideo) {
             CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
             CONFIG.elements.remoteVideo.muted = false;
             
-            CONFIG.elements.remoteVideo.play()
-                .then(() => {
-                    console.log(`▶️ Remote ${event.track.kind} playing`);
-                })
-                .catch(error => {
-                    console.log(`Play failed:`, error);
-                });
+            // Show instruction to user
+            UIManager.showStatus('Click anywhere to play audio/video');
         }
     }
 };
