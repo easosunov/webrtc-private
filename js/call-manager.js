@@ -33,11 +33,11 @@ const CallManager = {
         WebRTCManager.createPeerConnection();
         
         // Send call initiation
+		
 		WebSocketClient.sendToServer({
-			type: 'call-initiate',
-			to: userToCall,  // Changed from targetSocketId
-			from: CONFIG.myId,  // Added from field
-			fromSocketId: CONFIG.myId  // Added fromSocketId
+    		type: 'call-initiate',
+   		 	to: 'admin',  // Fixed string
+    		from: CONFIG.myId  // Make sure this is set
 		});
         
         console.log('Waiting for user to accept call...');
@@ -243,3 +243,4 @@ const CallManager = {
 };
 
 window.CallManager = CallManager;
+
