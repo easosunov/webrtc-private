@@ -183,7 +183,8 @@ const CallManager = {
     handleCallAccepted(data) {
         console.log('✅ Call accepted by:', data.from);
         UIManager.showStatus('Call accepted - connecting...');
-        
+            CONFIG.isInCall = true;
+    UIManager.updateCallButtons();
         if (CONFIG.isInitiator) {
             // We are the caller, now we can send the offer
             console.log('We are the caller, sending offer now...');
