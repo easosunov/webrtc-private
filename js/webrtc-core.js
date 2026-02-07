@@ -85,10 +85,7 @@ const WebRTCManager = {
                     console.log('🔊 REMOTE AUDIO TRACK RECEIVED!');
                 }
                 
-                // CRITICAL: Don't try to play automatically
-                // Wait for user to click "Play Videos" button
-                
-                // Just update status
+                // Just update status - don't play automatically
                 const trackCount = CONFIG.remoteStream.getTracks().length;
                 UIManager.showStatus(`Received ${trackCount} media track(s) - Click "Play Videos" to start`);
                 
@@ -120,7 +117,7 @@ const WebRTCManager = {
                     console.log('✅ PEER CONNECTION CONNECTED!');
                     CONFIG.isInCall = true;
                     CONFIG.isProcessingAnswer = false;
-                    UIManager.showStatus('Call connected');
+                    UIManager.showStatus('Call connected - Click "Play Videos" to start');
                     UIManager.updateCallButtons();
                     
                     // Final audio check
@@ -189,30 +186,39 @@ const WebRTCManager = {
     
     async handleOffer(data) {
         console.log('📥 Received offer from:', data.sender || 'unknown');
+        console.log('📥 Offer data:', data);
         
+        // Store the caller's socket ID
+        if (data.senderSocketId) {
+            CONFIG.targetSocketId = data.senderSocketId;
+            console.log(`🎯 Set target socket ID: ${CONFIG.targetSocketId}`);
+        }
+        
+        // Create peer connection if it doesn't exist
         if (!CONFIG.peerConnection) {
             this.createPeerConnection();
         }
         
-        if (data.senderSocketId && !CONFIG.targetSocketId) {
-            CONFIG.targetSocketId = data.senderSocketId;
-        }
-        
         try {
+            console.log('🔧 Setting remote description...');
             await CONFIG.peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
             console.log('✅ Remote description set');
             
+            console.log('🔧 Creating answer...');
             const answer = await CONFIG.peerConnection.createAnswer();
             await CONFIG.peerConnection.setLocalDescription(answer);
+            console.log('✅ Local description set for answer');
             
+            // Send answer back to caller
             WebSocketClient.sendToServer({
                 type: 'answer',
                 targetSocketId: CONFIG.targetSocketId,
                 answer: answer,
-                sender: CONFIG.myUsername
+                sender: CONFIG.myUsername,
+                senderSocketId: CONFIG.mySocketId
             });
             
-            console.log('✅ Answer sent');
+            console.log('✅ Answer sent back to caller');
             this.processIceCandidateQueue();
             
         } catch (error) {
@@ -231,8 +237,9 @@ const WebRTCManager = {
         }
         
         try {
+            console.log('🔧 Setting remote description (answer)...');
             await CONFIG.peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-            console.log('✅ Remote description set');
+            console.log('✅ Remote description set from answer');
             this.processIceCandidateQueue();
             
         } catch (error) {
