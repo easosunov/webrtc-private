@@ -1,4 +1,4 @@
-// js/webrtc-core.js
+// js/webrtc-core.js - CLEAN WORKING VERSION
 const WebRTCManager = {
     createPeerConnection() {
         console.log('🔗 Creating peer connection...');
@@ -9,7 +9,6 @@ const WebRTCManager = {
                 { urls: "stun:stun1.l.google.com:19302" }
             ],
             iceCandidatePoolSize: 10,
-            // Audio-specific optimizations
             sdpSemantics: 'unified-plan',
             bundlePolicy: 'max-bundle',
             rtcpMuxPolicy: 'require'
@@ -17,13 +16,13 @@ const WebRTCManager = {
         
         CONFIG.peerConnection = new RTCPeerConnection(config);
         
-        // CRITICAL: Initialize remote stream
+        // Initialize remote stream
         CONFIG.remoteStream = new MediaStream();
         
-        // Set up remote video element - ENSURE AUDIO IS NOT MUTED
+        // Set up remote video element
         if (CONFIG.elements.remoteVideo) {
             CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
-            CONFIG.elements.remoteVideo.muted = false;  // THIS IS KEY FOR AUDIO
+            CONFIG.elements.remoteVideo.muted = false;
             CONFIG.elements.remoteVideo.volume = 1.0;
         }
         
@@ -41,11 +40,10 @@ const WebRTCManager = {
         if (CONFIG.localStream && CONFIG.hasMediaPermissions) {
             const audioTracks = CONFIG.localStream.getAudioTracks();
             
-            // Add audio tracks FIRST (most important)
+            // Add audio tracks
             if (audioTracks.length > 0) {
                 audioTracks.forEach(track => {
                     try {
-                        // Ensure audio track is enabled
                         track.enabled = true;
                         CONFIG.peerConnection.addTrack(track, CONFIG.localStream);
                         console.log(`✅ Added AUDIO track: ${track.id.substring(0, 10)}...`);
@@ -68,7 +66,7 @@ const WebRTCManager = {
             });
         }
         
-        // Handle incoming tracks - FIXED VERSION
+        // Handle incoming tracks
         CONFIG.peerConnection.ontrack = (event) => {
             console.log('🎬 ontrack event:', event.track.kind);
             
@@ -76,11 +74,9 @@ const WebRTCManager = {
                 // Add track to our remote stream
                 CONFIG.remoteStream.addTrack(event.track);
                 
-                // CRITICAL: Update the remote video element
+                // Update the remote video element
                 if (CONFIG.elements.remoteVideo) {
-                    // Ensure we're using the correct stream
                     CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
-                    // ENSURE AUDIO IS NOT MUTED
                     CONFIG.elements.remoteVideo.muted = false;
                     
                     // Try to play
@@ -88,7 +84,6 @@ const WebRTCManager = {
                         .then(() => {
                             console.log(`▶️ Remote ${event.track.kind} playing`);
                             
-                            // Check audio state
                             if (event.track.kind === 'audio') {
                                 console.log('🔊 AUDIO TRACK CONNECTED!');
                                 setTimeout(() => {
@@ -286,119 +281,41 @@ const WebRTCManager = {
         CONFIG.iceCandidatesQueue = [];
     },
     
-    // Add replaceMediaTracks as a method of WebRTCManager
- 
-// In webrtc-core.js - UPDATE the replaceMediaTracks method to this:
-
-
-// In webrtc-core.js - COMPLETE NEW VERSION OF replaceMediaTracks
-
-// In webrtc-core.js - FIXED replaceMediaTracks method
-replaceMediaTracks(newStream) {
-    return new Promise((resolve, reject) => {
+    // SIMPLE replaceMediaTracks method
+    replaceMediaTracks(newStream) {
         if (!CONFIG.peerConnection) {
             console.error('No peer connection to replace tracks');
-            reject(new Error('No peer connection'));
             return;
         }
         
-        console.log('🔄 Starting track replacement...');
-        
-        // Store old stream for cleanup
-        const oldStream = CONFIG.localStream;
+        console.log('Replacing media tracks...');
         
         // Get current senders
         const senders = CONFIG.peerConnection.getSenders();
-        console.log('Current senders:', senders.map(s => s.track?.kind));
         
-        // Get new tracks
-        const newAudioTrack = newStream.getAudioTracks()[0];
-        const newVideoTrack = newStream.getVideoTracks()[0];
-        
-        console.log(`New tracks - Audio: ${!!newAudioTrack}, Video: ${!!newVideoTrack}`);
-        
-        // Create an array to track replacement promises
-        const replacementPromises = [];
-        
-        // Handle audio track
-        if (newAudioTrack) {
-            const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
-            if (audioSender) {
-                console.log('🔊 Replacing audio track');
-                replacementPromises.push(audioSender.replaceTrack(newAudioTrack));
-            } else {
-                console.log('🔊 Adding audio track');
-                CONFIG.peerConnection.addTrack(newAudioTrack, newStream);
+        // Replace each track
+        newStream.getTracks().forEach(track => {
+            const sender = senders.find(s => s.track && s.track.kind === track.kind);
+            if (sender) {
+                console.log(`Replacing ${track.kind} track`);
+                sender.replaceTrack(track);
             }
+        });
+        
+        // Update local stream reference
+        if (CONFIG.localStream) {
+            CONFIG.localStream.getTracks().forEach(t => t.stop());
+        }
+        CONFIG.localStream = newStream;
+        
+        // Update local video display
+        if (CONFIG.elements.localVideo) {
+            CONFIG.elements.localVideo.srcObject = newStream;
         }
         
-        // Handle video track
-        const videoSenders = senders.filter(s => s.track && s.track.kind === 'video');
-        
-        if (newVideoTrack) {
-            // We have video to send
-            if (videoSenders.length > 0) {
-                console.log('📹 Replacing video track');
-                replacementPromises.push(videoSenders[0].replaceTrack(newVideoTrack));
-                
-                // Remove extra video senders if any
-                for (let i = 1; i < videoSenders.length; i++) {
-                    console.log('🗑️ Removing extra video sender');
-                    replacementPromises.push(videoSenders[i].replaceTrack(null));
-                }
-            } else {
-                console.log('📹 Adding video track');
-                CONFIG.peerConnection.addTrack(newVideoTrack, newStream);
-            }
-        } else {
-            // No video - remove all video senders
-            videoSenders.forEach((sender, index) => {
-                console.log(`📹 Removing video sender ${index + 1}`);
-                replacementPromises.push(sender.replaceTrack(null));
-            });
-        }
-        
-        // Wait for all replacements to complete
-        Promise.all(replacementPromises)
-            .then(() => {
-                // Update local stream reference
-                if (oldStream) {
-                    oldStream.getTracks().forEach(track => {
-                        if (track !== newAudioTrack && track !== newVideoTrack) {
-                            track.stop();
-                            console.log(`⏹️ Stopped old ${track.kind} track`);
-                        }
-                    });
-                }
-                
-                CONFIG.localStream = newStream;
-                
-                // Update local video display
-                if (CONFIG.elements.localVideo) {
-                    CONFIG.elements.localVideo.srcObject = newStream;
-                    CONFIG.elements.localVideo.style.display = newVideoTrack ? 'block' : 'none';
-                    CONFIG.elements.localVideo.muted = true;
-                }
-                
-                console.log('✅ Media tracks replaced successfully');
-                resolve();
-                
-                // If we're the initiator, trigger renegotiation after a short delay
-                if (CONFIG.isInitiator) {
-                    setTimeout(() => {
-                        console.log('🔄 Initiator: Creating new offer for renegotiation');
-                        this.createAndSendOffer();
-                    }, 100);
-                }
-            })
-            .catch(error => {
-                console.error('❌ Error replacing tracks:', error);
-                reject(error);
-            });
-    });
-}
-
- 
+        console.log('Media tracks replaced successfully');
+    },
+    
     // Keep your existing debug function
     checkAudioState() {
         console.log('🔍 AUDIO STATE CHECK:');
