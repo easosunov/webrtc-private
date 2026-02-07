@@ -286,42 +286,41 @@ const WebRTCManager = {
         CONFIG.iceCandidatesQueue = [];
     },
     
-	// Add to webrtc-core.js
-function replaceMediaTracks(newStream) {
-    if (!CONFIG.peerConnection) {
-        console.error('No peer connection to replace tracks');
-        return;
-    }
-    
-    console.log('Replacing media tracks...');
-    
-    // Get current senders
-    const senders = CONFIG.peerConnection.getSenders();
-    
-    // Replace each track
-    newStream.getTracks().forEach(track => {
-        const sender = senders.find(s => s.track && s.track.kind === track.kind);
-        if (sender) {
-            console.log(`Replacing ${track.kind} track`);
-            sender.replaceTrack(track);
+    // Add replaceMediaTracks as a method of WebRTCManager
+    replaceMediaTracks(newStream) {
+        if (!CONFIG.peerConnection) {
+            console.error('No peer connection to replace tracks');
+            return;
         }
-    });
+        
+        console.log('Replacing media tracks...');
+        
+        // Get current senders
+        const senders = CONFIG.peerConnection.getSenders();
+        
+        // Replace each track
+        newStream.getTracks().forEach(track => {
+            const sender = senders.find(s => s.track && s.track.kind === track.kind);
+            if (sender) {
+                console.log(`Replacing ${track.kind} track`);
+                sender.replaceTrack(track);
+            }
+        });
+        
+        // Update local stream reference
+        if (CONFIG.localStream) {
+            CONFIG.localStream.getTracks().forEach(t => t.stop());
+        }
+        CONFIG.localStream = newStream;
+        
+        // Update local video display
+        if (CONFIG.elements.localVideo) {
+            CONFIG.elements.localVideo.srcObject = newStream;
+        }
+        
+        console.log('Media tracks replaced successfully');
+    },
     
-    // Update local stream reference
-    if (CONFIG.localStream) {
-        CONFIG.localStream.getTracks().forEach(t => t.stop());
-    }
-    CONFIG.localStream = newStream;
-    
-    // Update local video display
-    if (CONFIG.elements.localVideo) {
-        CONFIG.elements.localVideo.srcObject = newStream;
-    }
-    
-    console.log('Media tracks replaced successfully');
-}
-	
-	
     // Keep your existing debug function
     checkAudioState() {
         console.log('🔍 AUDIO STATE CHECK:');
