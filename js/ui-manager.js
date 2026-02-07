@@ -15,6 +15,9 @@ const UIManager = {
             accessCodeInput: document.getElementById('hiddenAccessCode')
         };
         
+        // Initialize admin status to offline
+        CONFIG.adminSocketId = null;
+        
         console.log('UI Manager initialized');
     },
     
@@ -71,15 +74,33 @@ const UIManager = {
     },
     
     updateCallButtons() {
-        // For user view
+        // For user view (non-admin)
         if (!CONFIG.isAdmin) {
             const callBtn = document.querySelector('.btn-call');
             const hangupBtn = document.querySelector('.btn-hangup');
             
             if (callBtn) {
-                callBtn.disabled = CONFIG.isInCall || !CONFIG.adminSocketId || CONFIG.isProcessingAnswer;
-                callBtn.className = (CONFIG.adminSocketId && !CONFIG.isInCall && !CONFIG.isProcessingAnswer) ? 
-                    'btn-call active' : 'btn-call';
+                // Determine admin availability
+                const isAdminAvailable = CONFIG.adminSocketId !== null && 
+                                        !CONFIG.isInCall && 
+                                        !CONFIG.isProcessingAnswer;
+                
+                callBtn.disabled = !isAdminAvailable;
+                
+                // Update button text and style based on state
+                if (CONFIG.adminSocketId === null) {
+                    callBtn.textContent = 'Admin Offline';
+                    callBtn.className = 'btn-call disabled';
+                } else if (CONFIG.isInCall) {
+                    callBtn.textContent = 'In Call';
+                    callBtn.className = 'btn-call disabled';
+                } else if (CONFIG.isProcessingAnswer) {
+                    callBtn.textContent = 'Processing...';
+                    callBtn.className = 'btn-call disabled';
+                } else {
+                    callBtn.textContent = 'Call Admin';
+                    callBtn.className = 'btn-call active';
+                }
             }
             
             if (hangupBtn) {
@@ -119,6 +140,9 @@ const UIManager = {
             CONFIG.elements.adminView.style.display = 'none';
             document.querySelector('h2').textContent = 'WebRTC - ' + CONFIG.myUsername;
         }
+        
+        // Update buttons after showing call screen
+        this.updateCallButtons();
     }
 };
 
