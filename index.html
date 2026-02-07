@@ -601,16 +601,19 @@
 		
 		
 		<!-- Add this near your logout button - adjust positioning based on your layout -->
-<div class="resolution-controls" style="margin: 10px 0; display: none;" id="resolutionControls">
-    <label for="resolutionSelect" style="font-size: 14px; margin-right: 10px;">Quality:</label>
-    <select id="resolutionSelect" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc;">
-        <option value="audio-only">Audio Only</option>
-        <option value="low">Low (320x240)</option>
-        <option value="medium" selected>Medium (640x480)</option>
-        <option value="high">High (1280x720)</option>
-        <option value="full-hd">Full HD (1920x1080)</option>
+<div class="resolution-controls" id="resolutionControls" style="display: none;">
+    <label for="resolutionSelect">Video Quality:</label>
+    <select id="resolutionSelect">
+        <option value="audio-only">🔇 Audio Only</option>
+        <option value="low">📷 Low (320x240)</option>
+        <option value="medium" selected>📷 Medium (640x480)</option>
+        <option value="high">📷 High (1280x720)</option>
+        <option value="full-hd">📷 Full HD (1920x1080)</option>
     </select>
-    <button id="applyResolution" style="margin-left: 10px; padding: 5px 10px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">Apply</button>
+    <button id="applyResolution">Apply Now</button>
+    <div id="resolutionStatus" style="font-size: 12px; color: #666; margin-top: 5px; display: none;">
+        Applying changes...
+    </div>
 </div>
 		
 		
