@@ -217,19 +217,30 @@ const UIManager = {
     },
     
     // Helper: Update during active call
-    async updateDuringActiveCall() {
-        const constraints = this.getResolutionConstraints(CONFIG.currentResolution);
-        
-        // Get new stream
-        const newStream = await navigator.mediaDevices.getUserMedia(constraints);
-        
-        // Use WebRTCManager's method to replace tracks
-        WebRTCManager.replaceMediaTracks(newStream);
-        
-        console.log(`✅ Resolution changed to: ${CONFIG.currentResolution} during active call`);
-        this.showStatus(`Quality changed to: ${this.getResolutionName(CONFIG.currentResolution)}`);
-    },
+
+// In ui-manager.js - update the updateDuringActiveCall method
+async updateDuringActiveCall() {
+    const constraints = this.getResolutionConstraints(CONFIG.currentResolution);
     
+    console.log('Getting new stream with constraints:', constraints);
+    
+    // Get new stream
+    const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+    console.log('New stream obtained:', newStream.getTracks().map(t => t.kind));
+    
+    // Use WebRTCManager's method to replace tracks
+    await WebRTCManager.replaceMediaTracks(newStream);
+    
+    console.log(`✅ Resolution changed to: ${CONFIG.currentResolution} during active call`);
+    this.showStatus(`Quality changed to: ${this.getResolutionName(CONFIG.currentResolution)}`);
+    
+    // Force renegotiation if we're the initiator
+    if (CONFIG.isInitiator) {
+        console.log('🔄 We are the initiator, forcing renegotiation...');
+        // This will be handled by replaceMediaTracks
+    }
+},
+
     // Helper: Get constraints for a resolution
     getResolutionConstraints(resolution) {
         const constraints = {
