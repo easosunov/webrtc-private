@@ -1,14 +1,15 @@
-// js/webrtc-core.js - COMPLETE FIXED VERSION
+// js/webrtc-core.js
 const WebRTCManager = {
     createPeerConnection() {
         console.log('🔗 Creating peer connection...');
         
         const config = {
-            iceServers: CONFIG.peerConfig?.iceServers || [
+            iceServers: [
                 { urls: "stun:stun.l.google.com:19302" },
                 { urls: "stun:stun1.l.google.com:19302" }
             ],
             iceCandidatePoolSize: 10,
+            // Audio-specific optimizations
             sdpSemantics: 'unified-plan',
             bundlePolicy: 'max-bundle',
             rtcpMuxPolicy: 'require'
@@ -16,74 +17,84 @@ const WebRTCManager = {
         
         CONFIG.peerConnection = new RTCPeerConnection(config);
         
-        // Initialize remote stream
+        // CRITICAL: Initialize remote stream - BUT DON'T ATTACH YET
         CONFIG.remoteStream = new MediaStream();
         
-        // CRITICAL FIX: Attach EMPTY stream NOW (during user interaction)
-        if (CONFIG.elements.remoteVideo) {
-            CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
-            CONFIG.elements.remoteVideo.muted = false;
-            CONFIG.elements.remoteVideo.volume = 1.0;
-            console.log('✅ Pre-attached empty stream to remote video');
+        // DO NOT set srcObject here - wait for user interaction
+        // Just ensure the video elements exist
+        console.log('🎬 Remote stream created, will attach after user interaction');
+        
+        // DEBUG: Check what tracks we have
+        if (CONFIG.localStream) {
+            const audioTracks = CONFIG.localStream.getAudioTracks();
+            console.log(`🎤 Local audio tracks: ${audioTracks.length}`);
+            
+            audioTracks.forEach(track => {
+                console.log(`  Audio track: enabled=${track.enabled}, readyState=${track.readyState}`);
+            });
         }
         
-        // Add local tracks
+        // Add local tracks to peer connection
         if (CONFIG.localStream && CONFIG.hasMediaPermissions) {
             const audioTracks = CONFIG.localStream.getAudioTracks();
-            const videoTracks = CONFIG.localStream.getVideoTracks();
             
-            console.log(`🎤 Local audio tracks: ${audioTracks.length}`);
-            console.log(`🎥 Local video tracks: ${videoTracks.length}`);
+            // Add audio tracks FIRST (most important)
+            if (audioTracks.length > 0) {
+                audioTracks.forEach(track => {
+                    try {
+                        // Ensure audio track is enabled
+                        track.enabled = true;
+                        CONFIG.peerConnection.addTrack(track, CONFIG.localStream);
+                        console.log(`✅ Added AUDIO track: ${track.id.substring(0, 10)}...`);
+                    } catch (error) {
+                        console.error('❌ Failed to add audio track:', error);
+                    }
+                });
+            } else {
+                console.warn('⚠️ WARNING: No audio tracks found!');
+            }
             
-            // Add audio
-            audioTracks.forEach(track => {
-                try {
-                    track.enabled = true;
-                    CONFIG.peerConnection.addTrack(track, CONFIG.localStream);
-                    console.log(`✅ Added AUDIO track: ${track.id.substring(0, 10)}...`);
-                } catch (error) {
-                    console.error('❌ Failed to add audio:', error);
-                }
-            });
-            
-            // Add video
-            videoTracks.forEach(track => {
+            // Add video tracks
+            CONFIG.localStream.getVideoTracks().forEach(track => {
                 try {
                     CONFIG.peerConnection.addTrack(track, CONFIG.localStream);
                     console.log(`✅ Added VIDEO track: ${track.id.substring(0, 10)}...`);
                 } catch (error) {
-                    console.error('❌ Failed to add video:', error);
+                    console.error('❌ Failed to add video track:', error);
                 }
             });
         }
         
-        // Handle incoming tracks - SIMPLIFIED
+        // Handle incoming tracks - WAIT FOR USER INTERACTION TO PLAY
         CONFIG.peerConnection.ontrack = (event) => {
             console.log('🎬 ontrack event:', event.track.kind);
             
             if (event.track) {
-                // Add track to pre-attached stream
+                // Add track to our remote stream
                 CONFIG.remoteStream.addTrack(event.track);
                 
-                // Update call state
-                CONFIG.isInCall = true;
-                CONFIG.isProcessingAnswer = false;
+                // Store that we have tracks ready to play
+                CONFIG.hasRemoteTracks = true;
                 
-                // Update UI
-                setTimeout(() => {
-                    UIManager.showStatus('Call connected');
-                    UIManager.updateCallButtons();
-                }, 100);
+                // DEBUG: Log what we received
+                console.log(`✅ Added ${event.track.kind} track to remote stream`);
                 
-                console.log(`✅ Added ${event.track.kind} track to stream`);
+                // Update UI to show we're ready to play
+                if (event.track.kind === 'audio') {
+                    CONFIG.hasRemoteAudio = true;
+                    console.log('🔊 REMOTE AUDIO TRACK RECEIVED!');
+                }
                 
-                // Try to play if user already interacted
-                if (window.userAlreadyClicked && CONFIG.elements.remoteVideo) {
-                    setTimeout(() => {
-                        CONFIG.elements.remoteVideo.play()
-                            .then(() => console.log('✅ Auto-playing after previous click'))
-                            .catch(e => console.log('Auto-play still blocked:', e));
-                    }, 500);
+                // CRITICAL: Don't try to play automatically
+                // Wait for user to click "Play Videos" button
+                
+                // Just update status
+                const trackCount = CONFIG.remoteStream.getTracks().length;
+                UIManager.showStatus(`Received ${trackCount} media track(s) - Click "Play Videos" to start`);
+                
+                // Update play button if function exists
+                if (typeof updatePlayButton === 'function') {
+                    updatePlayButton(true);
                 }
             }
         };
@@ -91,17 +102,16 @@ const WebRTCManager = {
         // ICE candidate handling
         CONFIG.peerConnection.onicecandidate = (event) => {
             if (event.candidate && CONFIG.targetSocketId) {
-                console.log('🧊 Sending ICE candidate to', CONFIG.targetSocketId);
+                console.log('🧊 Sending ICE candidate');
                 WebSocketClient.sendToServer({
                     type: 'ice-candidate',
-                    target: CONFIG.targetSocketId,
-                    from: CONFIG.myId,
+                    targetSocketId: CONFIG.targetSocketId,
                     candidate: event.candidate
                 });
             }
         };
         
-        // Connection state
+        // Connection state monitoring
         CONFIG.peerConnection.onconnectionstatechange = () => {
             console.log('🔗 Connection state:', CONFIG.peerConnection.connectionState);
             
@@ -112,6 +122,12 @@ const WebRTCManager = {
                     CONFIG.isProcessingAnswer = false;
                     UIManager.showStatus('Call connected');
                     UIManager.updateCallButtons();
+                    
+                    // Final audio check
+                    setTimeout(() => {
+                        const audioTracks = CONFIG.remoteStream.getAudioTracks();
+                        console.log(`🔊 Connected! Remote audio tracks: ${audioTracks.length}`);
+                    }, 500);
                     break;
                     
                 case 'disconnected':
@@ -125,11 +141,6 @@ const WebRTCManager = {
             }
         };
         
-        // Track ended event
-        CONFIG.peerConnection.onsignalingstatechange = () => {
-            console.log('📡 Signaling state:', CONFIG.peerConnection.signalingState);
-        };
-        
         console.log('✅ Peer connection created');
     },
     
@@ -140,17 +151,21 @@ const WebRTCManager = {
         }
         
         try {
-            console.log('📤 Creating offer for', CONFIG.targetSocketId);
+            console.log('📤 Creating offer...');
             
             const offer = await CONFIG.peerConnection.createOffer({
                 offerToReceiveAudio: true,
                 offerToReceiveVideo: true
             });
             
+            // Check SDP for audio
             if (offer.sdp) {
                 const hasAudio = offer.sdp.includes('m=audio');
-                const hasVideo = offer.sdp.includes('m=video');
-                console.log(`📄 SDP - Audio: ${hasAudio ? '✅' : '❌'}, Video: ${hasVideo ? '✅' : '❌'}`);
+                console.log(`📄 SDP - Has audio: ${hasAudio ? '✅' : '❌'}`);
+                
+                // Log audio codecs
+                if (offer.sdp.includes('opus')) console.log('  Using Opus codec');
+                if (offer.sdp.includes('ISAC')) console.log('  Using ISAC codec');
             }
             
             await CONFIG.peerConnection.setLocalDescription(offer);
@@ -158,9 +173,9 @@ const WebRTCManager = {
             
             WebSocketClient.sendToServer({
                 type: 'offer',
-                target: CONFIG.targetSocketId,
-                from: CONFIG.myId,
-                offer: offer
+                targetSocketId: CONFIG.targetSocketId,
+                offer: offer,
+                sender: CONFIG.myUsername
             });
             
             console.log('✅ Offer sent');
@@ -173,16 +188,14 @@ const WebRTCManager = {
     },
     
     async handleOffer(data) {
-        console.log('📥 Received offer from:', data.from || 'unknown');
-        
-        // Set target
-        if (data.from && !CONFIG.targetSocketId) {
-            CONFIG.targetSocketId = data.from;
-            console.log('Set target to:', CONFIG.targetSocketId);
-        }
+        console.log('📥 Received offer from:', data.sender || 'unknown');
         
         if (!CONFIG.peerConnection) {
             this.createPeerConnection();
+        }
+        
+        if (data.senderSocketId && !CONFIG.targetSocketId) {
+            CONFIG.targetSocketId = data.senderSocketId;
         }
         
         try {
@@ -194,12 +207,12 @@ const WebRTCManager = {
             
             WebSocketClient.sendToServer({
                 type: 'answer',
-                target: data.from,
-                from: CONFIG.myId,
-                answer: answer
+                targetSocketId: CONFIG.targetSocketId,
+                answer: answer,
+                sender: CONFIG.myUsername
             });
             
-            console.log('✅ Answer sent to', data.from);
+            console.log('✅ Answer sent');
             this.processIceCandidateQueue();
             
         } catch (error) {
@@ -210,7 +223,7 @@ const WebRTCManager = {
     },
     
     async handleAnswer(data) {
-        console.log('📥 Received answer from:', data.from || 'unknown');
+        console.log('📥 Received answer from:', data.sender || 'unknown');
         
         if (!CONFIG.peerConnection) {
             console.error('No peer connection for answer');
@@ -232,7 +245,7 @@ const WebRTCManager = {
     handleIceCandidate(data) {
         if (!data.candidate) return;
         
-        console.log('🧊 Received ICE candidate from', data.from || 'unknown');
+        console.log('🧊 Received ICE candidate');
         
         if (!CONFIG.peerConnection) {
             console.log('Queueing ICE candidate');
@@ -268,20 +281,21 @@ const WebRTCManager = {
         CONFIG.iceCandidatesQueue = [];
     },
     
-    // Debug function
-    checkMediaState() {
-        console.log('🔍 MEDIA STATE:');
+    // Keep your existing debug function
+    checkAudioState() {
+        console.log('🔍 AUDIO STATE CHECK:');
         
         if (CONFIG.localStream) {
-            console.log(`Local - Audio: ${CONFIG.localStream.getAudioTracks().length}, Video: ${CONFIG.localStream.getVideoTracks().length}`);
+            const localAudio = CONFIG.localStream.getAudioTracks();
+            console.log(`Local audio tracks: ${localAudio.length}`);
         }
         
         if (CONFIG.remoteStream) {
-            console.log(`Remote - Audio: ${CONFIG.remoteStream.getAudioTracks().length}, Video: ${CONFIG.remoteStream.getVideoTracks().length}`);
+            const remoteAudio = CONFIG.remoteStream.getAudioTracks();
+            console.log(`Remote audio tracks: ${remoteAudio.length}`);
         }
         
         if (CONFIG.elements.remoteVideo) {
-            console.log(`Remote video srcObject: ${!!CONFIG.elements.remoteVideo.srcObject}`);
             console.log(`Remote video muted: ${CONFIG.elements.remoteVideo.muted}`);
         }
     }
