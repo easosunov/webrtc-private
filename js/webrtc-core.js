@@ -1,4 +1,4 @@
-// js/webrtc-core.js
+// js/webrtc-core.js - FIXED AUTOPLAY VERSION
 const WebRTCManager = {
     createPeerConnection() {
         console.log('🔗 Creating peer connection...');
@@ -17,12 +17,16 @@ const WebRTCManager = {
         
         CONFIG.peerConnection = new RTCPeerConnection(config);
         
-        // CRITICAL: Initialize remote stream - BUT DON'T ATTACH YET
+        // CRITICAL: Initialize remote stream immediately
         CONFIG.remoteStream = new MediaStream();
         
-        // DO NOT set srcObject here - wait for user interaction
-        // Just ensure the video elements exist
-        console.log('🎬 Remote stream created, will attach after user interaction');
+        // Set up remote video element IMMEDIATELY
+        if (CONFIG.elements.remoteVideo) {
+            CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
+            CONFIG.elements.remoteVideo.muted = false;  // THIS IS KEY FOR AUDIO
+            CONFIG.elements.remoteVideo.volume = 1.0;
+            console.log('🎬 Remote video element prepared for autoplay');
+        }
         
         // DEBUG: Check what tracks we have
         if (CONFIG.localStream) {
@@ -65,7 +69,7 @@ const WebRTCManager = {
             });
         }
         
-        // Handle incoming tracks - WAIT FOR USER INTERACTION TO PLAY
+        // Handle incoming tracks - FIXED AUTOPLAY VERSION
         CONFIG.peerConnection.ontrack = (event) => {
             console.log('🎬 ontrack event:', event.track.kind);
             
@@ -73,25 +77,43 @@ const WebRTCManager = {
                 // Add track to our remote stream
                 CONFIG.remoteStream.addTrack(event.track);
                 
-                // Store that we have tracks ready to play
-                CONFIG.hasRemoteTracks = true;
-                
-                // DEBUG: Log what we received
-                console.log(`✅ Added ${event.track.kind} track to remote stream`);
-                
-                // Update UI to show we're ready to play
-                if (event.track.kind === 'audio') {
-                    CONFIG.hasRemoteAudio = true;
-                    console.log('🔊 REMOTE AUDIO TRACK RECEIVED!');
-                }
-                
-                // Just update status - don't play automatically
-                const trackCount = CONFIG.remoteStream.getTracks().length;
-                UIManager.showStatus(`Received ${trackCount} media track(s) - Click "Play Videos" to start`);
-                
-                // Update play button if function exists
-                if (typeof updatePlayButton === 'function') {
-                    updatePlayButton(true);
+                // CRITICAL: Update the remote video element
+                if (CONFIG.elements.remoteVideo) {
+                    // Ensure we're using the correct stream
+                    CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
+                    // ENSURE AUDIO IS NOT MUTED
+                    CONFIG.elements.remoteVideo.muted = false;
+                    
+                    // TRY TO PLAY IMMEDIATELY
+                    const playPromise = CONFIG.elements.remoteVideo.play();
+                    
+                    if (playPromise !== undefined) {
+                        playPromise
+                            .then(() => {
+                                console.log(`▶️ Remote ${event.track.kind} playing AUTOMATICALLY`);
+                                
+                                // Check audio state
+                                if (event.track.kind === 'audio') {
+                                    console.log('🔊 AUDIO TRACK AUTOPLAY SUCCESS!');
+                                    setTimeout(() => {
+                                        const audioTracks = CONFIG.remoteStream.getAudioTracks();
+                                        console.log(`Remote audio tracks: ${audioTracks.length}`);
+                                    }, 100);
+                                }
+                            })
+                            .catch(error => {
+                                console.log(`⚠️ Autoplay failed for ${event.track.kind}:`, error);
+                                console.log('ℹ️ This is normal in Chrome without user gesture');
+                                
+                                // Store that we need user interaction
+                                CONFIG.needsUserInteraction = true;
+                                
+                                // Update UI to inform user
+                                if (UIManager && UIManager.showStatus) {
+                                    UIManager.showStatus('Media ready - click "Play Videos" button');
+                                }
+                            });
+                    }
                 }
             }
         };
@@ -117,8 +139,20 @@ const WebRTCManager = {
                     console.log('✅ PEER CONNECTION CONNECTED!');
                     CONFIG.isInCall = true;
                     CONFIG.isProcessingAnswer = false;
-                    UIManager.showStatus('Call connected - Click "Play Videos" to start');
+                    UIManager.showStatus('Call connected');
                     UIManager.updateCallButtons();
+                    
+                    // Try to play remote video if not already playing
+                    if (CONFIG.elements.remoteVideo && CONFIG.remoteStream) {
+                        setTimeout(() => {
+                            const playPromise = CONFIG.elements.remoteVideo.play();
+                            if (playPromise !== undefined) {
+                                playPromise.catch(e => {
+                                    console.log('⚠️ Post-connection autoplay attempt failed:', e);
+                                });
+                            }
+                        }, 500);
+                    }
                     
                     // Final audio check
                     setTimeout(() => {
@@ -186,39 +220,30 @@ const WebRTCManager = {
     
     async handleOffer(data) {
         console.log('📥 Received offer from:', data.sender || 'unknown');
-        console.log('📥 Offer data:', data);
         
-        // Store the caller's socket ID
-        if (data.senderSocketId) {
-            CONFIG.targetSocketId = data.senderSocketId;
-            console.log(`🎯 Set target socket ID: ${CONFIG.targetSocketId}`);
-        }
-        
-        // Create peer connection if it doesn't exist
         if (!CONFIG.peerConnection) {
             this.createPeerConnection();
         }
         
+        if (data.senderSocketId && !CONFIG.targetSocketId) {
+            CONFIG.targetSocketId = data.senderSocketId;
+        }
+        
         try {
-            console.log('🔧 Setting remote description...');
             await CONFIG.peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
             console.log('✅ Remote description set');
             
-            console.log('🔧 Creating answer...');
             const answer = await CONFIG.peerConnection.createAnswer();
             await CONFIG.peerConnection.setLocalDescription(answer);
-            console.log('✅ Local description set for answer');
             
-            // Send answer back to caller
             WebSocketClient.sendToServer({
                 type: 'answer',
                 targetSocketId: CONFIG.targetSocketId,
                 answer: answer,
-                sender: CONFIG.myUsername,
-                senderSocketId: CONFIG.mySocketId
+                sender: CONFIG.myUsername
             });
             
-            console.log('✅ Answer sent back to caller');
+            console.log('✅ Answer sent');
             this.processIceCandidateQueue();
             
         } catch (error) {
@@ -237,9 +262,8 @@ const WebRTCManager = {
         }
         
         try {
-            console.log('🔧 Setting remote description (answer)...');
             await CONFIG.peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-            console.log('✅ Remote description set from answer');
+            console.log('✅ Remote description set');
             this.processIceCandidateQueue();
             
         } catch (error) {
