@@ -30,6 +30,7 @@ const UIManager = {
         };
         CONFIG.audioEnabled = true;
         CONFIG.videoEnabled = true;
+        CONFIG.currentResolution = 'medium'; // Track current resolution
         
         // NEW: Setup resolution control event listeners
         this.setupResolutionControls();
@@ -140,16 +141,17 @@ const UIManager = {
     
     // NEW: Setup resolution controls
     setupResolutionControls() {
-        if (CONFIG.elements.applyResolutionBtn) {
-            CONFIG.elements.applyResolutionBtn.addEventListener('click', () => {
-                this.changeVideoResolution();
+        // Auto-apply when selection changes
+        if (CONFIG.elements.resolutionSelect) {
+            CONFIG.elements.resolutionSelect.addEventListener('change', async (e) => {
+                await this.changeVideoResolution();
             });
         }
         
-        if (CONFIG.elements.resolutionSelect) {
-            CONFIG.elements.resolutionSelect.addEventListener('change', (e) => {
-                // Optional: Apply immediately on change instead of needing Apply button
-                // this.changeVideoResolution();
+        // Keep apply button as backup
+        if (CONFIG.elements.applyResolutionBtn) {
+            CONFIG.elements.applyResolutionBtn.addEventListener('click', async () => {
+                await this.changeVideoResolution();
             });
         }
     },
@@ -161,93 +163,88 @@ const UIManager = {
         }
     },
     
-    // NEW: Change video resolution
-
-// In ui-manager.js, REPLACE the changeVideoResolution function with this:
-
-// NEW: Change video resolution
-async changeVideoResolution() {
-    if (!CONFIG.elements.resolutionSelect) return;
-    
-    const resolution = CONFIG.elements.resolutionSelect.value;
-    console.log(`Changing resolution to: ${resolution}`);
-    
-    // Define constraints based on selection
-    let newConstraints = {};
-    let videoEnabled = true;
-    
-    switch (resolution) {
-        case 'audio-only':
-            videoEnabled = false;
-            newConstraints = { 
-                audio: true,
-                video: false 
-            };
-            break;
-            
-        case 'low':
-            videoEnabled = true;
-            newConstraints = { 
-                audio: true,
-                video: { 
-                    width: { ideal: 320, max: 320 },
-                    height: { ideal: 240, max: 240 },
-                    frameRate: { ideal: 15, max: 20 },
-                    facingMode: 'user'
-                }
-            };
-            break;
-            
-        case 'medium':
-            videoEnabled = true;
-            newConstraints = { 
-                audio: true,
-                video: { 
-                    width: { ideal: 640, max: 640 },
-                    height: { ideal: 480, max: 480 },
-                    frameRate: { ideal: 30, max: 30 },
-                    facingMode: 'user'
-                }
-            };
-            break;
-            
-        case 'high':
-            videoEnabled = true;
-            newConstraints = { 
-                audio: true,
-                video: { 
-                    width: { ideal: 1280, max: 1280 },
-                    height: { ideal: 720, max: 720 },
-                    frameRate: { ideal: 30, max: 30 },
-                    facingMode: 'user'
-                }
-            };
-            break;
-            
-        case 'full-hd':
-            videoEnabled = true;
-            newConstraints = { 
-                audio: true,
-                video: { 
-                    width: { ideal: 1920, max: 1920 },
-                    height: { ideal: 1080, max: 1080 },
-                    frameRate: { ideal: 30, max: 30 },
-                    facingMode: 'user'
-                }
-            };
-            break;
-    }
-    
-    // Store the constraints
-    CONFIG.videoEnabled = videoEnabled;
-    CONFIG.videoConstraints = newConstraints.video || false;
-    
-    try {
-        // If in a call, we need to renegotiate
-        if (CONFIG.inCall && CONFIG.peerConnection) {
-            console.log('Active call detected, renegotiating media...');
-            
-            // Get new media stream
+    // NEW: Change video resolution - FIXED VERSION
+    async changeVideoResolution() {
+        if (!CONFIG.elements.resolutionSelect) return;
+        
+        const resolution = CONFIG.elements.resolutionSelect.value;
+        console.log(`Changing resolution to: ${resolution}`);
+        
+        // Store current resolution
+        CONFIG.currentResolution = resolution;
+        
+        // Define constraints based on selection
+        let newConstraints = {};
+        let videoEnabled = true;
+        
+        switch (resolution) {
+            case 'audio-only':
+                videoEnabled = false;
+                newConstraints = { 
+                    audio: true,
+                    video: false 
+                };
+                break;
+                
+            case 'low':
+                videoEnabled = true;
+                newConstraints = { 
+                    audio: true,
+                    video: { 
+                        width: { ideal: 320, max: 320 },
+                        height: { ideal: 240, max: 240 },
+                        frameRate: { ideal: 15, max: 20 },
+                        facingMode: 'user'
+                    }
+                };
+                break;
+                
+            case 'medium':
+                videoEnabled = true;
+                newConstraints = { 
+                    audio: true,
+                    video: { 
+                        width: { ideal: 640, max: 640 },
+                        height: { ideal: 480, max: 480 },
+                        frameRate: { ideal: 30, max: 30 },
+                        facingMode: 'user'
+                    }
+                };
+                break;
+                
+            case 'high':
+                videoEnabled = true;
+                newConstraints = { 
+                    audio: true,
+                    video: { 
+                        width: { ideal: 1280, max: 1280 },
+                        height: { ideal: 720, max: 720 },
+                        frameRate: { ideal: 30, max: 30 },
+                        facingMode: 'user'
+                    }
+                };
+                break;
+                
+            case 'full-hd':
+                videoEnabled = true;
+                newConstraints = { 
+                    audio: true,
+                    video: { 
+                        width: { ideal: 1920, max: 1920 },
+                        height: { ideal: 1080, max: 1080 },
+                        frameRate: { ideal: 30, max: 30 },
+                        facingMode: 'user'
+                    }
+                };
+                break;
+        }
+        
+        // Store the constraints
+        CONFIG.videoEnabled = videoEnabled;
+        CONFIG.videoConstraints = newConstraints.video || false;
+        
+        try {
+            // Always get new stream with the specified constraints
             const newStream = await navigator.mediaDevices.getUserMedia(newConstraints);
             console.log('New stream obtained:', newStream.getTracks().map(t => `${t.kind}:${t.enabled}`));
             
@@ -266,74 +263,59 @@ async changeVideoResolution() {
             if (CONFIG.elements.localVideo) {
                 CONFIG.elements.localVideo.srcObject = newStream;
                 CONFIG.elements.localVideo.style.display = videoEnabled ? 'block' : 'none';
+                CONFIG.elements.localVideo.muted = true;
             }
             
-            // Replace tracks in peer connection
-            const senders = CONFIG.peerConnection.getSenders();
-            console.log('Current senders:', senders.map(s => s.track?.kind));
-            
-            // For each track in new stream
-            newStream.getTracks().forEach(track => {
-                const sender = senders.find(s => s.track && s.track.kind === track.kind);
-                if (sender) {
-                    console.log(`Replacing ${track.kind} track`);
-                    sender.replaceTrack(track);
-                } else {
-                    // Add new track if not present
-                    console.log(`Adding new ${track.kind} track`);
-                    CONFIG.peerConnection.addTrack(track, newStream);
-                }
-            });
-            
-            // If switching to audio-only, remove video sender if it exists
-            if (!videoEnabled) {
-                const videoSender = senders.find(s => s.track && s.track.kind === 'video');
-                if (videoSender) {
-                    console.log('Removing video sender for audio-only mode');
-                    videoSender.replaceTrack(null);
-                }
-            }
-            
-            console.log(`✅ Resolution changed to: ${resolution} during active call`);
-            this.showStatus(`Quality changed to: ${this.getResolutionName(resolution)}`);
-            
-        } else {
-            // Not in a call, update local preview
-            if (CONFIG.localStream) {
-                // Stop old tracks
-                CONFIG.localStream.getTracks().forEach(track => track.stop());
+            // If in a call, replace tracks in peer connection
+            if (CONFIG.isInCall && CONFIG.peerConnection) {
+                console.log('Active call detected, replacing tracks...');
                 
-                // Get new stream
-                const newStream = await navigator.mediaDevices.getUserMedia(newConstraints);
-                CONFIG.localStream = newStream;
+                // Get current senders
+                const senders = CONFIG.peerConnection.getSenders();
+                console.log('Current senders:', senders.map(s => s.track?.kind));
                 
-                // Update local video element
-                if (CONFIG.elements.localVideo) {
-                    CONFIG.elements.localVideo.srcObject = newStream;
-                    CONFIG.elements.localVideo.style.display = videoEnabled ? 'block' : 'none';
+                // For each track in new stream
+                newStream.getTracks().forEach(track => {
+                    const sender = senders.find(s => s.track && s.track.kind === track.kind);
+                    if (sender) {
+                        console.log(`Replacing ${track.kind} track`);
+                        sender.replaceTrack(track);
+                    } else {
+                        // Add new track if not present
+                        console.log(`Adding new ${track.kind} track`);
+                        CONFIG.peerConnection.addTrack(track, newStream);
+                    }
+                });
+                
+                // Handle audio-only mode
+                if (!videoEnabled) {
+                    const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+                    if (videoSender) {
+                        console.log('Removing video track for audio-only mode');
+                        videoSender.replaceTrack(null);
+                    }
                 }
+                
+                console.log(`✅ Resolution changed to: ${resolution} during active call`);
+                this.showStatus(`Quality changed to: ${this.getResolutionName(resolution)}`);
+                
+            } else {
+                // Not in a call, just update local preview
+                console.log(`✅ Resolution settings updated to: ${resolution}`);
+                this.showStatus(`Quality set to: ${this.getResolutionName(resolution)}`);
             }
             
-            console.log(`✅ Resolution settings updated to: ${resolution}`);
-            this.showStatus(`Quality set to: ${this.getResolutionName(resolution)}`);
+        } catch (error) {
+            console.error('Error changing resolution:', error);
+            this.showError(`Failed to change resolution: ${error.message}`);
+            
+            // Revert selection on error
+            if (CONFIG.elements.resolutionSelect) {
+                CONFIG.elements.resolutionSelect.value = CONFIG.currentResolution || 'medium';
+            }
         }
-    } catch (error) {
-        console.error('Error changing resolution:', error);
-        this.showError(`Failed to change resolution: ${error.message}`);
-        
-        // Revert selection on error
-        if (CONFIG.elements.resolutionSelect) {
-            const currentResolution = CONFIG.videoEnabled ? 
-                (CONFIG.videoConstraints?.width?.ideal === 320 ? 'low' : 
-                 CONFIG.videoConstraints?.width?.ideal === 640 ? 'medium' :
-                 CONFIG.videoConstraints?.width?.ideal === 1280 ? 'high' :
-                 CONFIG.videoConstraints?.width?.ideal === 1920 ? 'full-hd' : 'medium') : 'audio-only';
-            CONFIG.elements.resolutionSelect.value = currentResolution;
-        }
-    }
-},
-
-
+    },
+    
     // NEW: Helper to get resolution display name
     getResolutionName(resolution) {
         const names = {
@@ -344,6 +326,66 @@ async changeVideoResolution() {
             'full-hd': 'Full HD (1920x1080)'
         };
         return names[resolution] || resolution;
+    },
+    
+    // NEW: Get current resolution constraints
+    getCurrentResolutionConstraints() {
+        const resolution = CONFIG.currentResolution || 'medium';
+        
+        switch (resolution) {
+            case 'audio-only':
+                return { audio: true, video: false };
+            case 'low':
+                return { 
+                    audio: true,
+                    video: { 
+                        width: { ideal: 320, max: 320 },
+                        height: { ideal: 240, max: 240 },
+                        frameRate: { ideal: 15, max: 20 },
+                        facingMode: 'user'
+                    }
+                };
+            case 'medium':
+                return { 
+                    audio: true,
+                    video: { 
+                        width: { ideal: 640, max: 640 },
+                        height: { ideal: 480, max: 480 },
+                        frameRate: { ideal: 30, max: 30 },
+                        facingMode: 'user'
+                    }
+                };
+            case 'high':
+                return { 
+                    audio: true,
+                    video: { 
+                        width: { ideal: 1280, max: 1280 },
+                        height: { ideal: 720, max: 720 },
+                        frameRate: { ideal: 30, max: 30 },
+                        facingMode: 'user'
+                    }
+                };
+            case 'full-hd':
+                return { 
+                    audio: true,
+                    video: { 
+                        width: { ideal: 1920, max: 1920 },
+                        height: { ideal: 1080, max: 1080 },
+                        frameRate: { ideal: 30, max: 30 },
+                        facingMode: 'user'
+                    }
+                };
+            default:
+                return { 
+                    audio: true,
+                    video: { 
+                        width: { ideal: 640, max: 640 },
+                        height: { ideal: 480, max: 480 },
+                        frameRate: { ideal: 30, max: 30 },
+                        facingMode: 'user'
+                    }
+                };
+        }
     },
     
     showLoginScreen() {
