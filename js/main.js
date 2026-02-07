@@ -1,4 +1,4 @@
-// js/main.js
+// js/main.js - ORIGINAL VERSION
 // Main entry point - initializes all modules
 
 console.log('WebRTC Client Initializing...');
@@ -21,7 +21,6 @@ window.CONFIG = window.CONFIG || {
     
     // Media
     hasMediaPermissions: false,
-    needsUserInteraction: false,
     
     // ICE
     iceCandidatesQueue: [],
@@ -155,24 +154,27 @@ function debug() {
     }
 }
 
-// OLD playVideo function - updated to use new autoplay system
 function playVideo() {
-    console.log('playVideo called - forwarding to WebRTCManager');
-    if (window.WebRTCManager && typeof WebRTCManager.handleUserInteraction === 'function') {
-        WebRTCManager.handleUserInteraction();
-    } else {
-        console.warn('WebRTCManager.handleUserInteraction not available');
-        UIManager.showStatus('Autoplay handler not ready');
+    console.log('Playing videos...');
+    
+    // Local video
+    if (CONFIG.elements.localVideo && CONFIG.localStream) {
+        CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
+        CONFIG.elements.localVideo.muted = true;
+        CONFIG.elements.localVideo.play()
+            .then(() => console.log('Local video playing'))
+            .catch(e => console.error('Local video play error:', e));
+    }
+    
+    // Remote video
+    if (CONFIG.elements.remoteVideo && CONFIG.remoteStream) {
+        CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
+        CONFIG.elements.remoteVideo.muted = false;
+        CONFIG.elements.remoteVideo.play()
+            .then(() => console.log('Remote video playing'))
+            .catch(e => console.error('Remote video play error:', e));
     }
 }
-
-// Handle Chrome autoplay policy - global click listener
-// This allows user to click anywhere to start audio if blocked
-document.addEventListener('click', function() {
-    if (window.WebRTCManager && typeof WebRTCManager.handleUserInteraction === 'function') {
-        WebRTCManager.handleUserInteraction();
-    }
-});
 
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
