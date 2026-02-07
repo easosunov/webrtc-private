@@ -1,4 +1,4 @@
-// js/call-manager.js - COMPLETE VERSION with ensureLocalStream
+// js/call-manager.js - ORIGINAL WORKING VERSION
 const CallManager = {
     async callUser(userToCall, socketToCall) {
         if (CONFIG.isInCall || CONFIG.isProcessingAnswer) {
@@ -29,9 +29,6 @@ const CallManager = {
             return;
         }
         
-        // NEW: Ensure we have a local stream
-        await this.ensureLocalStream();
-        
         // Create peer connection
         WebRTCManager.createPeerConnection();
         
@@ -46,32 +43,6 @@ const CallManager = {
         console.log('Waiting for user to accept call...');
     },
     
-    // NEW: Helper method to ensure we have a local stream
-    async ensureLocalStream() {
-        if (!CONFIG.localStream) {
-            console.log('Getting initial media stream...');
-            
-            // Get constraints based on current resolution
-            const constraints = {
-                audio: true,
-                video: CONFIG.videoEnabled ? (CONFIG.videoConstraints || true) : false
-            };
-            
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            CONFIG.localStream = stream;
-            
-            // Update local video display
-            if (CONFIG.elements.localVideo) {
-                CONFIG.elements.localVideo.srcObject = stream;
-                CONFIG.elements.localVideo.muted = true;
-            }
-            
-            console.log('✅ Local stream obtained');
-        }
-        return true;
-    },
-    
-    // ... REST OF YOUR EXISTING CODE ...
     handleCallInitiated(data) {
         console.log(`📞 Incoming call from ${data.callerName}`);
         
@@ -90,7 +61,55 @@ const CallManager = {
     },
     
     showIncomingCallNotification(callerName) {
-        // ... your existing code ...
+        // Remove any existing notification
+        const existing = document.getElementById('incoming-call-notification');
+        if (existing) existing.remove();
+        
+        // Create notification
+        const notification = document.createElement('div');
+        notification.id = 'incoming-call-notification';
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            border: 2px solid #4CAF50;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            z-index: 1000;
+            min-width: 250px;
+        `;
+        
+        notification.innerHTML = `
+            <h3 style="margin: 0 0 10px 0; color: #333;">📞 Incoming Call</h3>
+            <p style="margin: 0 0 15px 0;">From: <strong>${callerName}</strong></p>
+            <div style="display: flex; gap: 10px;">
+                <button id="accept-btn" style="flex: 1; background: #4CAF50; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer;">Accept</button>
+                <button id="reject-btn" style="flex: 1; background: #f44336; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer;">Reject</button>
+            </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Add handlers
+        document.getElementById('accept-btn').onclick = () => {
+            notification.remove();
+            this.answerCall();
+        };
+        
+        document.getElementById('reject-btn').onclick = () => {
+            notification.remove();
+            this.rejectCall();
+        };
+        
+        // Auto-remove after 30 seconds
+        setTimeout(() => {
+            if (document.body.contains(notification)) {
+                notification.remove();
+                this.rejectCall();
+            }
+        }, 30000);
     },
     
     async answerCall() {
@@ -112,9 +131,6 @@ const CallManager = {
             return;
         }
         
-        // NEW: Ensure we have a local stream
-        await this.ensureLocalStream();
-        
         // Send acceptance
         WebSocketClient.sendToServer({
             type: 'call-accept',
@@ -129,13 +145,102 @@ const CallManager = {
         UIManager.showStatus('Connecting...');
     },
     
-    // ... REST OF YOUR EXISTING METHODS ...
-    rejectCall() { /* ... */ },
-    handleCallAccepted(data) { /* ... */ },
-    handleCallRejected(data) { /* ... */ },
-    handleCallEnded(data) { /* ... */ },
-    hangup() { /* ... */ },
-    cleanupCall() { /* ... */ }
+    rejectCall() {
+        console.log('Rejecting call');
+        
+        if (CONFIG.targetSocketId) {
+            WebSocketClient.sendToServer({
+                type: 'call-reject',
+                targetSocketId: CONFIG.targetSocketId
+            });
+        }
+        
+        CONFIG.targetSocketId = null;
+        CONFIG.targetUsername = null;
+        CONFIG.incomingCallFrom = null;
+        CONFIG.isProcessingAnswer = false;
+        
+        // Remove notification if exists
+        const notification = document.getElementById('incoming-call-notification');
+        if (notification) notification.remove();
+        
+        UIManager.showStatus('Call rejected');
+        UIManager.updateCallButtons();
+    },
+    
+    handleCallAccepted(data) {
+        console.log('✅ Call accepted by:', data.calleeName);
+        UIManager.showStatus('Call accepted - connecting...');
+        
+        if (CONFIG.isInitiator) {
+            // We are the caller, now we can send the offer
+            console.log('We are the caller, sending offer now...');
+            setTimeout(() => {
+                if (CONFIG.peerConnection && CONFIG.targetSocketId) {
+                    WebRTCManager.createAndSendOffer();
+                }
+            }, 500);
+        } else {
+            // We are the callee, we'll handle the offer when it arrives
+            console.log('We are the callee, waiting for offer...');
+        }
+    },
+    
+    handleCallRejected(data) {
+        console.log('Call rejected by:', data.rejecterName);
+        this.cleanupCall();
+        UIManager.showStatus('Call rejected by ' + (data.rejecterName || 'user'));
+    },
+    
+    handleCallEnded(data) {
+        console.log('Call ended by remote:', data.endedByName || 'remote user');
+        this.cleanupCall();
+        UIManager.showStatus('Call ended by ' + (data.endedByName || 'remote user'));
+    },
+    
+    hangup() {
+        console.log('Ending call');
+        UIManager.showStatus('Ending call...');
+        
+        if (CONFIG.targetSocketId) {
+            WebSocketClient.sendToServer({
+                type: 'call-end',
+                targetSocketId: CONFIG.targetSocketId
+            });
+        }
+        
+        this.cleanupCall();
+    },
+    
+    cleanupCall() {
+        console.log('Cleaning up call...');
+        
+        CONFIG.isProcessingAnswer = false;
+        
+        if (CONFIG.peerConnection) {
+            CONFIG.peerConnection.close();
+            CONFIG.peerConnection = null;
+        }
+        
+        if (CONFIG.elements.remoteVideo && CONFIG.elements.remoteVideo.srcObject) {
+            CONFIG.elements.remoteVideo.srcObject.getTracks().forEach(track => track.stop());
+            CONFIG.elements.remoteVideo.srcObject = null;
+        }
+        
+        CONFIG.targetSocketId = null;
+        CONFIG.targetUsername = null;
+        CONFIG.isInCall = false;
+        CONFIG.isInitiator = false;
+        CONFIG.incomingCallFrom = null;
+        CONFIG.iceCandidatesQueue = [];
+        
+        // Remove notification if exists
+        const notification = document.getElementById('incoming-call-notification');
+        if (notification) notification.remove();
+        
+        UIManager.showStatus('Ready');
+        UIManager.updateCallButtons();
+    }
 };
 
 window.CallManager = CallManager;
