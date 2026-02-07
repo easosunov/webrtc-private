@@ -67,8 +67,8 @@
 <body>
     <div id="login">
         <h2>Private WebRTC Communicator</h2>
-        <input id="username" placeholder="Username" value="admin">
-        <input id="password" type="password" placeholder="Password" value="admin123">
+        <!-- CHANGED: Single access code field instead of username+password -->
+        <input id="accessCode" placeholder="Enter your access code" value="a">
         <button onclick="login()">Login</button>
         <div id="status">Ready to login...</div>
     </div>
