@@ -11,8 +11,8 @@ const UIManager = {
             localVideo: document.getElementById('localVideo'),
             remoteVideo: document.getElementById('remoteVideo'),
             statusEl: document.getElementById('status'),
-            usernameInput: document.getElementById('username'),
-            passwordInput: document.getElementById('password')
+            // CHANGED: Single access code input instead of username+password
+            accessCodeInput: document.getElementById('accessCode')
         };
         
         console.log('UI Manager initialized');
@@ -31,7 +31,20 @@ const UIManager = {
     },
     
     updateUsersList(users) {
-        if (!CONFIG.isAdmin || !CONFIG.elements.userList) return;
+        // Only admin should see user list
+        if (!CONFIG.isAdmin) return;
+        
+        // If userList element doesn't exist yet, create it or wait
+        if (!CONFIG.elements.userList) {
+            console.warn('userList element not found, attempting to find it');
+            // Try to find the element again
+            CONFIG.elements.userList = document.getElementById('userList');
+            if (!CONFIG.elements.userList) {
+                console.warn('Still cannot find userList element, will retry in 100ms');
+                setTimeout(() => this.updateUsersList(users), 100);
+                return;
+            }
+        }
         
         const userList = CONFIG.elements.userList;
         userList.innerHTML = '';
