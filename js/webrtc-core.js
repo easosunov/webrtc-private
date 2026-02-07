@@ -287,40 +287,84 @@ const WebRTCManager = {
     },
     
     // Add replaceMediaTracks as a method of WebRTCManager
-    replaceMediaTracks(newStream) {
-        if (!CONFIG.peerConnection) {
-            console.error('No peer connection to replace tracks');
-            return;
-        }
-        
-        console.log('Replacing media tracks...');
-        
-        // Get current senders
-        const senders = CONFIG.peerConnection.getSenders();
-        
-        // Replace each track
-        newStream.getTracks().forEach(track => {
-            const sender = senders.find(s => s.track && s.track.kind === track.kind);
-            if (sender) {
-                console.log(`Replacing ${track.kind} track`);
-                sender.replaceTrack(track);
-            }
-        });
-        
-        // Update local stream reference
-        if (CONFIG.localStream) {
-            CONFIG.localStream.getTracks().forEach(t => t.stop());
-        }
-        CONFIG.localStream = newStream;
-        
-        // Update local video display
-        if (CONFIG.elements.localVideo) {
-            CONFIG.elements.localVideo.srcObject = newStream;
-        }
-        
-        console.log('Media tracks replaced successfully');
-    },
+ 
+// In webrtc-core.js - UPDATE the replaceMediaTracks method to this:
+
+replaceMediaTracks(newStream) {
+    if (!CONFIG.peerConnection) {
+        console.error('No peer connection to replace tracks');
+        return;
+    }
     
+    console.log('Replacing media tracks...');
+    
+    // Get current senders
+    const senders = CONFIG.peerConnection.getSenders();
+    console.log('Current senders:', senders.map(s => s.track?.kind));
+    
+    // Get tracks from new stream
+    const newAudioTrack = newStream.getAudioTracks()[0];
+    const newVideoTrack = newStream.getVideoTracks()[0];
+    
+    // Handle audio track
+    const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
+    if (newAudioTrack) {
+        if (audioSender) {
+            console.log('Replacing audio track');
+            audioSender.replaceTrack(newAudioTrack);
+        } else {
+            console.log('Adding audio track');
+            CONFIG.peerConnection.addTrack(newAudioTrack, newStream);
+        }
+    } else if (audioSender) {
+        console.log('Removing audio track (no audio in new stream)');
+        audioSender.replaceTrack(null);
+    }
+    
+    // Handle video track
+    const videoSenders = senders.filter(s => s.track && s.track.kind === 'video');
+    
+    if (newVideoTrack) {
+        // We have a video track to send
+        if (videoSenders.length > 0) {
+            // Replace first video sender
+            console.log('Replacing video track');
+            videoSenders[0].replaceTrack(newVideoTrack);
+            
+            // Remove any additional video senders
+            for (let i = 1; i < videoSenders.length; i++) {
+                console.log('Removing extra video sender');
+                videoSenders[i].replaceTrack(null);
+            }
+        } else {
+            // Add new video track
+            console.log('Adding video track');
+            CONFIG.peerConnection.addTrack(newVideoTrack, newStream);
+        }
+    } else {
+        // No video track - remove all video senders
+        videoSenders.forEach(videoSender => {
+            console.log('Removing video track');
+            videoSender.replaceTrack(null);
+        });
+    }
+    
+    // Update local stream reference
+    if (CONFIG.localStream) {
+        CONFIG.localStream.getTracks().forEach(t => t.stop());
+    }
+    CONFIG.localStream = newStream;
+    
+    // Update local video display
+    if (CONFIG.elements.localVideo) {
+        CONFIG.elements.localVideo.srcObject = newStream;
+        CONFIG.elements.localVideo.style.display = newVideoTrack ? 'block' : 'none';
+    }
+    
+    console.log('Media tracks replaced successfully');
+},
+
+ 
     // Keep your existing debug function
     checkAudioState() {
         console.log('🔍 AUDIO STATE CHECK:');
