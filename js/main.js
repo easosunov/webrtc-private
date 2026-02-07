@@ -387,22 +387,7 @@ document.addEventListener('click', function() {
     }
 });
 
-// Also try to play when tracks arrive if user already interacted
-CONFIG.peerConnection.ontrack = (event) => {
-    // ... existing code ...
-    
-    if (CONFIG.elements.remoteVideo) {
-        CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
-        CONFIG.elements.remoteVideo.muted = false;
-        
-        // Try play immediately if user already clicked somewhere
-        if (userInteracted) {
-            CONFIG.elements.remoteVideo.play()
-                .then(() => console.log('✅ Auto-playing after user interaction'))
-                .catch(e => console.log('Auto-play failed:', e));
-        }
-    }
-};
+
 
 // Export for testing (if needed)
 if (typeof module !== 'undefined' && module.exports) {
