@@ -219,25 +219,33 @@ const UIManager = {
     // Helper: Update during active call
 
 // In ui-manager.js - update the updateDuringActiveCall method
+
+// In ui-manager.js - CORRECTED updateDuringActiveCall method
 async updateDuringActiveCall() {
     const constraints = this.getResolutionConstraints(CONFIG.currentResolution);
     
     console.log('Getting new stream with constraints:', constraints);
     
-    // Get new stream
-    const newStream = await navigator.mediaDevices.getUserMedia(constraints);
-    console.log('New stream obtained:', newStream.getTracks().map(t => t.kind));
-    
-    // Use WebRTCManager's method to replace tracks
-    await WebRTCManager.replaceMediaTracks(newStream);
-    
-    console.log(`✅ Resolution changed to: ${CONFIG.currentResolution} during active call`);
-    this.showStatus(`Quality changed to: ${this.getResolutionName(CONFIG.currentResolution)}`);
-    
-    // Force renegotiation if we're the initiator
-    if (CONFIG.isInitiator) {
-        console.log('🔄 We are the initiator, forcing renegotiation...');
-        // This will be handled by replaceMediaTracks
+    try {
+        // Get new stream
+        const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log('New stream obtained:', newStream.getTracks().map(t => t.kind));
+        
+        // Use WebRTCManager's method to replace tracks
+        await WebRTCManager.replaceMediaTracks(newStream);
+        
+        console.log(`✅ Resolution changed to: ${CONFIG.currentResolution} during active call`);
+        this.showStatus(`Quality changed to: ${this.getResolutionName(CONFIG.currentResolution)}`);
+        
+    } catch (error) {
+        console.error('Failed to change resolution:', error);
+        this.showError(`Failed to change resolution: ${error.message}`);
+        
+        // Revert selection on error
+        if (CONFIG.elements.resolutionSelect) {
+            const prevResolution = CONFIG.currentResolution;
+            CONFIG.elements.resolutionSelect.value = prevResolution;
+        }
     }
 },
 
