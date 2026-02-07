@@ -1,23 +1,21 @@
 // js/auth-manager.js
 const AuthManager = {
     async login() {
-        const username = CONFIG.elements.usernameInput.value.trim();
-        const password = CONFIG.elements.passwordInput.value;
-        
-        if (!username || !password) {
-            UIManager.showError('Enter username and password');
-            return;
-        }
-        
-        console.log('Login attempt:', username);
-        UIManager.showStatus('Logging in...');
-        
-        WebSocketClient.sendToServer({
-            type: 'login',
-            username: username,
-            password: password
-        });
-    },
+    const password = CONFIG.elements.passwordInput.value;
+    
+    if (!password) {
+        UIManager.showError('Enter password');
+        return;
+    }
+    
+    console.log('Login attempt');
+    UIManager.showStatus('Logging in...');
+    
+    WebSocketClient.sendToServer({
+        type: 'login',
+        password: password
+    });
+},
     
     handleLoginSuccess(data) {
         CONFIG.myId = data.userId;
