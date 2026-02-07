@@ -55,31 +55,64 @@ const WebRTCManager = {
                 }
             });
         }
+		
         
         // Handle incoming tracks
-        CONFIG.peerConnection.ontrack = (event) => {
-            console.log('🎬 ontrack event:', event.track.kind, 'from', event.streams.length, 'streams');
-            
-            if (event.track) {
-                // Add track to our remote stream
-                CONFIG.remoteStream.addTrack(event.track);
-                
-                // Update remote video element
-                if (CONFIG.elements.remoteVideo) {
-                    CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
-                    CONFIG.elements.remoteVideo.muted = false;
-                    
-                    CONFIG.elements.remoteVideo.play()
-                        .then(() => {
-                            console.log(`▶️ Remote ${event.track.kind} playing`);
-                        })
-                        .catch(error => {
-                            console.log(`Play failed:`, error);
-                        });
-                }
-            }
-        };
+CONFIG.peerConnection.ontrack = (event) => {
+    console.log('🎬 ontrack event:', event.track.kind, 'from', event.streams.length, 'streams');
+    
+    if (event.track) {
+        // Add track to our remote stream
+        CONFIG.remoteStream.addTrack(event.track);
         
+        // CRITICAL: Mark as in call
+        CONFIG.isInCall = true;
+        CONFIG.isProcessingAnswer = false;
+        
+        // Update UI
+        setTimeout(() => {
+            UIManager.showStatus('Call connected');
+            UIManager.updateCallButtons();
+        }, 100);
+        
+        // Update remote video element
+        if (CONFIG.elements.remoteVideo) {
+            CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
+            CONFIG.elements.remoteVideo.muted = false;
+            
+            CONFIG.elements.remoteVideo.play()
+                .then(() => {
+                    console.log(`▶️ Remote ${event.track.kind} playing`);
+                })
+                .catch(error => {
+                    console.log(`Play failed:`, error);
+                });
+        }
+    }
+};
+        
+CONFIG.peerConnection.onconnectionstatechange = () => {
+    console.log('🔗 Connection state:', CONFIG.peerConnection.connectionState);
+    
+    switch (CONFIG.peerConnection.connectionState) {
+        case 'connected':
+            console.log('✅ PEER CONNECTION CONNECTED!');
+            CONFIG.isInCall = true;  // SET THIS
+            CONFIG.isProcessingAnswer = false;
+            UIManager.showStatus('Call connected');
+            UIManager.updateCallButtons();
+            break;
+            
+        case 'disconnected':
+        case 'failed':
+        case 'closed':
+            console.log('❌ Peer connection ended');
+            if (CONFIG.peerConnection.connectionState === 'closed') {
+                CallManager.cleanupCall();
+            }
+            break;
+    }
+};
         // ICE candidate handling - FIXED: include target and from
         CONFIG.peerConnection.onicecandidate = (event) => {
             if (event.candidate && CONFIG.targetSocketId) {
