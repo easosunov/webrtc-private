@@ -1,4 +1,4 @@
-// js/webrtc-core.js - FIXED AUTOPLAY VERSION
+// js/webrtc-core.js
 const WebRTCManager = {
     createPeerConnection() {
         console.log('🔗 Creating peer connection...');
@@ -17,15 +17,14 @@ const WebRTCManager = {
         
         CONFIG.peerConnection = new RTCPeerConnection(config);
         
-        // CRITICAL: Initialize remote stream immediately
+        // CRITICAL: Initialize remote stream
         CONFIG.remoteStream = new MediaStream();
         
-        // Set up remote video element IMMEDIATELY
+        // Set up remote video element - ENSURE AUDIO IS NOT MUTED
         if (CONFIG.elements.remoteVideo) {
             CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
             CONFIG.elements.remoteVideo.muted = false;  // THIS IS KEY FOR AUDIO
             CONFIG.elements.remoteVideo.volume = 1.0;
-            console.log('🎬 Remote video element prepared for autoplay');
         }
         
         // DEBUG: Check what tracks we have
@@ -69,7 +68,7 @@ const WebRTCManager = {
             });
         }
         
-        // Handle incoming tracks - FIXED AUTOPLAY VERSION
+        // Handle incoming tracks - FIXED VERSION
         CONFIG.peerConnection.ontrack = (event) => {
             console.log('🎬 ontrack event:', event.track.kind);
             
@@ -84,36 +83,23 @@ const WebRTCManager = {
                     // ENSURE AUDIO IS NOT MUTED
                     CONFIG.elements.remoteVideo.muted = false;
                     
-                    // TRY TO PLAY IMMEDIATELY
-                    const playPromise = CONFIG.elements.remoteVideo.play();
-                    
-                    if (playPromise !== undefined) {
-                        playPromise
-                            .then(() => {
-                                console.log(`▶️ Remote ${event.track.kind} playing AUTOMATICALLY`);
-                                
-                                // Check audio state
-                                if (event.track.kind === 'audio') {
-                                    console.log('🔊 AUDIO TRACK AUTOPLAY SUCCESS!');
-                                    setTimeout(() => {
-                                        const audioTracks = CONFIG.remoteStream.getAudioTracks();
-                                        console.log(`Remote audio tracks: ${audioTracks.length}`);
-                                    }, 100);
-                                }
-                            })
-                            .catch(error => {
-                                console.log(`⚠️ Autoplay failed for ${event.track.kind}:`, error);
-                                console.log('ℹ️ This is normal in Chrome without user gesture');
-                                
-                                // Store that we need user interaction
-                                CONFIG.needsUserInteraction = true;
-                                
-                                // Update UI to inform user
-                                if (UIManager && UIManager.showStatus) {
-                                    UIManager.showStatus('Media ready - click "Play Videos" button');
-                                }
-                            });
-                    }
+                    // Try to play
+                    CONFIG.elements.remoteVideo.play()
+                        .then(() => {
+                            console.log(`▶️ Remote ${event.track.kind} playing`);
+                            
+                            // Check audio state
+                            if (event.track.kind === 'audio') {
+                                console.log('🔊 AUDIO TRACK CONNECTED!');
+                                setTimeout(() => {
+                                    const audioTracks = CONFIG.remoteStream.getAudioTracks();
+                                    console.log(`Remote audio tracks: ${audioTracks.length}`);
+                                }, 100);
+                            }
+                        })
+                        .catch(error => {
+                            console.log(`Play failed for ${event.track.kind}:`, error);
+                        });
                 }
             }
         };
@@ -141,18 +127,6 @@ const WebRTCManager = {
                     CONFIG.isProcessingAnswer = false;
                     UIManager.showStatus('Call connected');
                     UIManager.updateCallButtons();
-                    
-                    // Try to play remote video if not already playing
-                    if (CONFIG.elements.remoteVideo && CONFIG.remoteStream) {
-                        setTimeout(() => {
-                            const playPromise = CONFIG.elements.remoteVideo.play();
-                            if (playPromise !== undefined) {
-                                playPromise.catch(e => {
-                                    console.log('⚠️ Post-connection autoplay attempt failed:', e);
-                                });
-                            }
-                        }, 500);
-                    }
                     
                     // Final audio check
                     setTimeout(() => {
