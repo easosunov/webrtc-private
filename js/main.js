@@ -1,438 +1,347 @@
-// js/main.js
-document.addEventListener('DOMContentLoaded', async () => {
-    console.log('WebRTC Client Initializing...');
-    
-    try {
-        // 1. Initialize UI
-        UIManager.init();
+// js/webrtc-core.js - RESTORED AUTOPLAY VERSION
+const WebRTCManager = {
+    createPeerConnection() {
+        console.log('🔗 Creating peer connection...');
         
-        // 2. Load ICE servers (Twilio via Cloudflare Worker)
-        await loadIceServers();
+        const config = {
+            iceServers: [
+                { urls: "stun:stun.l.google.com:19302" },
+                { urls: "stun:stun1.l.google.com:19302" }
+            ],
+            iceCandidatePoolSize: 10,
+            // Audio-specific optimizations
+            sdpSemantics: 'unified-plan',
+            bundlePolicy: 'max-bundle',
+            rtcpMuxPolicy: 'require'
+        };
         
-        // 3. Configure signaling server URL
-        configureSignalingUrl();
+        CONFIG.peerConnection = new RTCPeerConnection(config);
         
-        // 4. Request media permissions
-        await AuthManager.checkPermissions();
+        // CRITICAL: Initialize remote stream immediately
+        CONFIG.remoteStream = new MediaStream();
         
-        // 5. Connect to signaling server
-        await WebSocketClient.connect();
-        
-        // 6. Setup global functions
-        setupGlobalFunctions();
-        
-        UIManager.showStatus('Ready to login');
-        
-    } catch (error) {
-        console.error('Initialization failed:', error);
-        handleInitializationError(error);
-    }
-});
-
-// ========== ICE SERVER CONFIGURATION ==========
-async function loadIceServers() {
-    // Priority list of ICE server sources
-    const iceSources = [
-        {
-            name: 'cloudflare-worker',
-            url: 'https://turn-token.easosunov.workers.dev/ice',
-            timeout: 5000
-        },
-        {
-            name: 'direct-twilio',
-            getServers: getDirectTwilioServers,
-            timeout: 7000
+        // Set up remote video element IMMEDIATELY
+        if (CONFIG.elements.remoteVideo) {
+            CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
+            CONFIG.elements.remoteVideo.muted = false;  // THIS IS KEY FOR AUDIO
+            CONFIG.elements.remoteVideo.volume = 1.0;
+            console.log('🎬 Remote video element prepared for autoplay');
         }
-    ];
-    
-    for (const source of iceSources) {
-        try {
-            console.log(`Trying ICE source: ${source.name}`);
+        
+        // DEBUG: Check what tracks we have
+        if (CONFIG.localStream) {
+            const audioTracks = CONFIG.localStream.getAudioTracks();
+            console.log(`🎤 Local audio tracks: ${audioTracks.length}`);
             
-            let iceServers;
-            if (source.url) {
-                iceServers = await fetchWithTimeout(source.url, { timeout: source.timeout });
-            } else if (source.getServers) {
-                iceServers = await source.getServers();
-            }
+            audioTracks.forEach(track => {
+                console.log(`  Audio track: enabled=${track.enabled}, readyState=${track.readyState}`);
+            });
+        }
+        
+        // Add local tracks to peer connection
+        if (CONFIG.localStream && CONFIG.hasMediaPermissions) {
+            const audioTracks = CONFIG.localStream.getAudioTracks();
             
-            if (iceServers && iceServers.length > 0) {
-                CONFIG.peerConfig = {
-                    iceServers: iceServers,
-                    iceCandidatePoolSize: 10,
-                    iceTransportPolicy: 'all'
-                };
-                CONFIG.iceSource = source.name;
-                console.log(`✓ ICE servers from ${source.name}: ${iceServers.length} servers`);
-                return;
-            }
-        } catch (error) {
-            console.warn(`${source.name} failed:`, error.message);
-            continue;
-        }
-    }
-    
-    // Fallback: Public STUN servers
-    console.log('Using public STUN fallback');
-    CONFIG.peerConfig = {
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' }
-        ],
-        iceCandidatePoolSize: 10
-    };
-    CONFIG.iceSource = 'public-stun';
-}
-
-async function getDirectTwilioServers() {
-    // Direct Twilio API call (requires credentials server-side)
-    const response = await fetch('/api/twilio-ice', {
-        signal: AbortSignal.timeout(5000)
-    });
-    const data = await response.json();
-    return data.iceServers;
-}
-
-// ========== SIGNALING SERVER CONFIGURATION ==========
-function configureSignalingUrl() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const hostname = window.location.hostname;
-    
-    // Auto-detect environment and configure accordingly
-    if (hostname.includes('github.io')) {
-        // GitHub Pages - use cloud signaling
-        CONFIG.wsUrl = 'wss://charismatic-hope-production.up.railway.app'; // ← Set this after deployment
-        console.log('GitHub Pages environment: Cloud signaling required');
-        
-        // Dynamic fallback: Try to discover local server
-        discoverLocalSignalingServer();
-        
-    } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        // Local development
-        CONFIG.wsUrl = `ws://${hostname}:8080`;
-        console.log('Local development: Using local signaling');
-        
-    } else if (/^192\.168\.|^10\.|^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname)) {
-        // Local network IP
-        CONFIG.wsUrl = `ws://${hostname}:8080`;
-        console.log('Local network: Using direct signaling');
-        
-    } else {
-        // Unknown/other domain - assume HTTPS and cloud signaling
-        CONFIG.wsUrl = `wss://${hostname}:8080`;
-        console.log('Custom domain: Attempting secure signaling');
-    }
-}
-
-function discoverLocalSignalingServer() {
-    // Attempt to find local server for fallback
-    const localIp = localStorage.getItem('localServerIp');
-    if (localIp) {
-        CONFIG.fallbackWsUrl = `ws://${localIp}:8080`;
-        console.log(`Local server fallback: ${CONFIG.fallbackWsUrl}`);
-    }
-}
-
-// ========== ERROR HANDLING ==========
-function handleInitializationError(error) {
-    console.error('Startup error:', error);
-    
-    const errorMsg = error.message || 'Unknown error';
-    
-    // User-friendly error messages
-    const errorMap = {
-        'Failed to fetch': 'Network error. Check internet connection.',
-        'Permission denied': 'Microphone/camera access required.',
-        'AbortError': 'Connection timeout. Server may be offline.'
-    };
-    
-    const friendlyMsg = errorMap[errorMsg] || `Error: ${errorMsg}`;
-    UIManager.showError(friendlyMsg);
-    
-    // Set minimal configuration for recovery
-    CONFIG.peerConfig = CONFIG.peerConfig || {
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-    };
-    
-    // Show retry button
-    setTimeout(() => {
-        if (!CONFIG.ws || CONFIG.ws.readyState !== WebSocket.OPEN) {
-            UIManager.showStatus('Click "Retry Connection" to try again');
-        }
-    }, 2000);
-}
-
-// ========== UTILITY FUNCTIONS ==========
-async function fetchWithTimeout(url, options = {}) {
-    const { timeout = 5000, ...fetchOptions } = options;
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-    
-    try {
-        const response = await fetch(url, {
-            ...fetchOptions,
-            signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        // Validate response structure
-        if (!data.iceServers || !Array.isArray(data.iceServers)) {
-            throw new Error('Invalid ICE servers response');
-        }
-        
-        return data.iceServers;
-        
-    } catch (error) {
-        clearTimeout(timeoutId);
-        throw error;
-    }
-}
-
-// ========== GLOBAL FUNCTIONS ==========
-function setupGlobalFunctions() {
-    // Core application functions
-    window.login = AuthManager.login.bind(AuthManager);
-    window.logout = AuthManager.logout.bind(AuthManager);
-    window.answerCall = CallManager.answerCall.bind(CallManager);
-    window.rejectCall = CallManager.rejectCall.bind(CallManager);
-    window.hangup = CallManager.hangup.bind(CallManager);
-    window.callUser = CallManager.callUser.bind(CallManager);
-    
-    // Admin call shortcut
-    window.callAdmin = function() {
-    if (CONFIG.adminSocketId) {
-        CallManager.callUser('Administrator', CONFIG.adminSocketId);
-		} else {
-        UIManager.showError('Administrator is not online');
-		}
-	};
-    
-    // Connection management
-    window.retryConnection = async function() {
-        UIManager.showStatus('Retrying connection...');
-        
-        if (CONFIG.ws && CONFIG.ws.readyState === WebSocket.OPEN) {
-            CONFIG.ws.close();
-        }
-        
-        try {
-            await WebSocketClient.connect();
-            UIManager.showStatus('Reconnected successfully');
-        } catch (error) {
-            UIManager.showError(`Reconnection failed: ${error.message}`);
-        }
-    };
-    
-    // ICE server diagnostic
-    window.testIceServers = async function() {
-        console.log('Testing ICE servers...');
-        console.log('Source:', CONFIG.iceSource);
-        console.log('Configuration:', CONFIG.peerConfig);
-        
-        const pc = new RTCPeerConnection(CONFIG.peerConfig);
-        let relayFound = false;
-        
-        pc.onicecandidate = (event) => {
-            if (event.candidate) {
-                console.log('Candidate:', {
-                    type: event.candidate.type,
-                    protocol: event.candidate.protocol,
-                    address: event.candidate.address
+            // Add audio tracks FIRST (most important)
+            if (audioTracks.length > 0) {
+                audioTracks.forEach(track => {
+                    try {
+                        // Ensure audio track is enabled
+                        track.enabled = true;
+                        CONFIG.peerConnection.addTrack(track, CONFIG.localStream);
+                        console.log(`✅ Added AUDIO track: ${track.id.substring(0, 10)}...`);
+                    } catch (error) {
+                        console.error('❌ Failed to add audio track:', error);
+                    }
                 });
-                
-                if (event.candidate.candidate.includes('relay')) {
-                    relayFound = true;
-                    console.log('✓ Relay candidate found (NAT traversal supported)');
-                }
             } else {
-                console.log('ICE gathering complete');
-                if (!relayFound) {
-                    console.warn('⚠️ No relay candidates (NAT traversal may fail)');
+                console.warn('⚠️ WARNING: No audio tracks found!');
+            }
+            
+            // Add video tracks
+            CONFIG.localStream.getVideoTracks().forEach(track => {
+                try {
+                    CONFIG.peerConnection.addTrack(track, CONFIG.localStream);
+                    console.log(`✅ Added VIDEO track: ${track.id.substring(0, 10)}...`);
+                } catch (error) {
+                    console.error('❌ Failed to add video track:', error);
+                }
+            });
+        }
+        
+        // Handle incoming tracks - AUTOPLAY VERSION (from working code)
+        CONFIG.peerConnection.ontrack = (event) => {
+            console.log('🎬 ontrack event:', event.track.kind);
+            
+            if (event.track) {
+                // Add track to our remote stream
+                CONFIG.remoteStream.addTrack(event.track);
+                
+                // CRITICAL: Update the remote video element
+                if (CONFIG.elements.remoteVideo) {
+                    // Ensure we're using the correct stream
+                    CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
+                    // ENSURE AUDIO IS NOT MUTED
+                    CONFIG.elements.remoteVideo.muted = false;
+                    
+                    // TRY TO PLAY IMMEDIATELY (like working version)
+                    const playPromise = CONFIG.elements.remoteVideo.play();
+                    
+                    if (playPromise !== undefined) {
+                        playPromise
+                            .then(() => {
+                                console.log(`▶️ Remote ${event.track.kind} playing AUTOMATICALLY`);
+                                
+                                // Check audio state
+                                if (event.track.kind === 'audio') {
+                                    console.log('🔊 AUDIO TRACK AUTOPLAY SUCCESS!');
+                                    setTimeout(() => {
+                                        const audioTracks = CONFIG.remoteStream.getAudioTracks();
+                                        console.log(`Remote audio tracks: ${audioTracks.length}`);
+                                    }, 100);
+                                }
+                            })
+                            .catch(error => {
+                                console.log(`⚠️ Autoplay failed for ${event.track.kind}:`, error);
+                                console.log('ℹ️ This is normal in Chrome without user gesture');
+                                
+                                // Store that we need user interaction
+                                CONFIG.needsUserInteraction = true;
+                                UIManager.showStatus('Click anywhere to start audio');
+                            });
+                    }
                 }
             }
         };
         
-        pc.createDataChannel('test');
-        await pc.createOffer();
-        await pc.setLocalDescription(pc.localDescription);
-        
-        setTimeout(() => pc.close(), 3000);
-    };
-    
-    // Debug function
-    window.debug = function() {
-        console.log('=== DEBUG INFO ===');
-        console.log('ICE Source:', CONFIG.iceSource);
-        console.log('WebSocket:', CONFIG.ws ? CONFIG.ws.readyState : 'Not connected');
-        console.log('User:', CONFIG.myUsername || 'Not logged in');
-        console.log('In Call:', CONFIG.isInCall);
-        console.log('Admin Online:', !!CONFIG.adminSocketId);
-        console.log('Connected Users:', CONFIG.connectedUsers.length);
-        console.log('==================');
-    };
-}
-
-// ========== AUTO-RECONNECT ==========
-(function setupAutoReconnect() {
-    let reconnectAttempts = 0;
-    const maxReconnectDelay = 10000; // 10 seconds
-    
-    function scheduleReconnect() {
-        if (CONFIG.isInCall) return; // Don't reconnect during active call
-        
-        reconnectAttempts++;
-        const delay = Math.min(1000 * Math.pow(1.5, reconnectAttempts), maxReconnectDelay);
-        
-        console.log(`Reconnecting in ${delay/1000}s (attempt ${reconnectAttempts})`);
-        UIManager.showStatus(`Reconnecting in ${Math.round(delay/1000)}s...`);
-        
-        setTimeout(async () => {
-            try {
-                await WebSocketClient.connect();
-                reconnectAttempts = 0;
-                UIManager.showStatus('Reconnected');
-            } catch (error) {
-                console.warn('Reconnect failed:', error);
-                scheduleReconnect();
+        // ICE candidate handling
+        CONFIG.peerConnection.onicecandidate = (event) => {
+            if (event.candidate && CONFIG.targetSocketId) {
+                console.log('🧊 Sending ICE candidate');
+                WebSocketClient.sendToServer({
+                    type: 'ice-candidate',
+                    targetSocketId: CONFIG.targetSocketId,
+                    candidate: event.candidate
+                });
             }
-        }, delay);
-    }
-    
-    // Monitor WebSocket connection
-    setInterval(() => {
-        if (CONFIG.ws && CONFIG.ws.readyState === WebSocket.CLOSED) {
-            if (reconnectAttempts === 0) {
-                scheduleReconnect();
-            }
-        }
-    }, 5000);
-})();
-
-// ========== ENVIRONMENT DETECTION ==========
-(function detectEnvironment() {
-    CONFIG.environment = {
-        isLocalhost: window.location.hostname === 'localhost',
-        isGitHubPages: window.location.hostname.includes('github.io'),
-        isSecure: window.location.protocol === 'https:',
-        userAgent: navigator.userAgent,
-        platform: navigator.platform
-    };
-    
-    console.log('Environment:', CONFIG.environment);
-})();
-
-async function playVideo() {
-    console.log('▶️ User clicked Play Videos - attempting to play media...');
-    
-    try {
-        // LOCAL VIDEO - should already have stream
-        if (CONFIG.elements.localVideo && CONFIG.localStream) {
-            CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
-            CONFIG.elements.localVideo.muted = true; // Always mute local
+        };
+        
+        // Connection state monitoring
+        CONFIG.peerConnection.onconnectionstatechange = () => {
+            console.log('🔗 Connection state:', CONFIG.peerConnection.connectionState);
             
-            try {
-                await CONFIG.elements.localVideo.play();
-                console.log('✅ Local video playing');
-            } catch (e) {
-                console.log('⚠️ Local video play failed:', e);
-            }
-        }
-        
-        // REMOTE VIDEO - only attach if we have a stream
-        if (CONFIG.elements.remoteVideo && CONFIG.remoteStream) {
-            const tracks = CONFIG.remoteStream.getTracks();
-            console.log(`🔍 Remote stream has ${tracks.length} tracks`);
-            
-            if (tracks.length > 0) {
-                CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
-                CONFIG.elements.remoteVideo.muted = false; // CRITICAL: unmute for audio
-                
-                try {
-                    await CONFIG.elements.remoteVideo.play();
-                    console.log('✅ Remote video playing');
+            switch (CONFIG.peerConnection.connectionState) {
+                case 'connected':
+                    console.log('✅ PEER CONNECTION CONNECTED!');
+                    CONFIG.isInCall = true;
+                    CONFIG.isProcessingAnswer = false;
+                    UIManager.showStatus('Call connected');
+                    UIManager.updateCallButtons();
                     
-                    // Check audio state
-                    const audioTracks = CONFIG.remoteStream.getAudioTracks();
-                    console.log(`🔊 Remote audio tracks: ${audioTracks.length}`);
-                    
-                    if (audioTracks.length > 0) {
-                        audioTracks[0].enabled = true;
-                        console.log('✅ Remote audio enabled');
+                    // Try to play remote video if not already playing
+                    if (CONFIG.elements.remoteVideo && CONFIG.remoteStream) {
+                        setTimeout(() => {
+                            const playPromise = CONFIG.elements.remoteVideo.play();
+                            if (playPromise !== undefined) {
+                                playPromise.catch(e => {
+                                    console.log('⚠️ Post-connection autoplay attempt failed:', e);
+                                });
+                            }
+                        }, 500);
                     }
                     
-                    UIManager.showStatus('Media playing successfully');
+                    // Final audio check
+                    setTimeout(() => {
+                        const audioTracks = CONFIG.remoteStream.getAudioTracks();
+                        console.log(`🔊 Connected! Remote audio tracks: ${audioTracks.length}`);
+                    }, 500);
+                    break;
                     
-                } catch (error) {
-                    console.error('❌ Failed to play remote media:', error);
-                    UIManager.showError(`Play failed: ${error.message}. Make sure call is connected first.`);
-                }
-            } else {
-                UIManager.showError('No remote media yet. Wait for call to connect.');
+                case 'disconnected':
+                case 'failed':
+                case 'closed':
+                    console.log('❌ Peer connection ended');
+                    if (CONFIG.peerConnection.connectionState === 'closed') {
+                        CallManager.cleanupCall();
+                    }
+                    break;
             }
-        } else {
-            UIManager.showError('No remote stream available. Make sure call is connected.');
+        };
+        
+        console.log('✅ Peer connection created');
+    },
+    
+    async createAndSendOffer() {
+        if (!CONFIG.peerConnection || !CONFIG.targetSocketId) {
+            console.error('No peer connection or target');
+            return;
         }
         
-    } catch (error) {
-        console.error('❌ General play error:', error);
-        UIManager.showError(`Error: ${error.message}`);
-    }
-}
-
-// Add to main.js or directly in HTML
-document.addEventListener('click', function() {
-    if (CONFIG.elements.remoteVideo && CONFIG.elements.remoteVideo.srcObject) {
-        CONFIG.elements.remoteVideo.play()
-            .then(() => console.log('Video playing after user click'))
-            .catch(e => console.log('Play still blocked:', e));
-    }
-});
-
-
-let userInteracted = false;
-
-// Global click handler for autoplay
-document.addEventListener('click', function() {
-    userInteracted = true;
+        try {
+            console.log('📤 Creating offer...');
+            
+            const offer = await CONFIG.peerConnection.createOffer({
+                offerToReceiveAudio: true,
+                offerToReceiveVideo: true
+            });
+            
+            // Check SDP for audio
+            if (offer.sdp) {
+                const hasAudio = offer.sdp.includes('m=audio');
+                console.log(`📄 SDP - Has audio: ${hasAudio ? '✅' : '❌'}`);
+                
+                // Log audio codecs
+                if (offer.sdp.includes('opus')) console.log('  Using Opus codec');
+                if (offer.sdp.includes('ISAC')) console.log('  Using ISAC codec');
+            }
+            
+            await CONFIG.peerConnection.setLocalDescription(offer);
+            console.log('✅ Local description set');
+            
+            WebSocketClient.sendToServer({
+                type: 'offer',
+                targetSocketId: CONFIG.targetSocketId,
+                offer: offer,
+                sender: CONFIG.myUsername
+            });
+            
+            console.log('✅ Offer sent');
+            
+        } catch (error) {
+            console.error('❌ Error creating/sending offer:', error);
+            UIManager.showError('Failed to start call: ' + error.message);
+            CallManager.cleanupCall();
+        }
+    },
     
-    if (CONFIG.elements.remoteVideo && CONFIG.elements.remoteVideo.srcObject) {
-        console.log('User clicked, attempting to play remote video...');
+    async handleOffer(data) {
+        console.log('📥 Received offer from:', data.sender || 'unknown');
         
-        const playPromise = CONFIG.elements.remoteVideo.play();
+        if (!CONFIG.peerConnection) {
+            this.createPeerConnection();
+        }
         
-        if (playPromise !== undefined) {
-            playPromise
+        if (data.senderSocketId && !CONFIG.targetSocketId) {
+            CONFIG.targetSocketId = data.senderSocketId;
+        }
+        
+        try {
+            await CONFIG.peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+            console.log('✅ Remote description set');
+            
+            const answer = await CONFIG.peerConnection.createAnswer();
+            await CONFIG.peerConnection.setLocalDescription(answer);
+            
+            WebSocketClient.sendToServer({
+                type: 'answer',
+                targetSocketId: CONFIG.targetSocketId,
+                answer: answer,
+                sender: CONFIG.myUsername
+            });
+            
+            console.log('✅ Answer sent');
+            this.processIceCandidateQueue();
+            
+        } catch (error) {
+            console.error('❌ Error handling offer:', error);
+            UIManager.showError('Call setup failed: ' + error.message);
+            CallManager.cleanupCall();
+        }
+    },
+    
+    async handleAnswer(data) {
+        console.log('📥 Received answer from:', data.sender || 'unknown');
+        
+        if (!CONFIG.peerConnection) {
+            console.error('No peer connection for answer');
+            return;
+        }
+        
+        try {
+            await CONFIG.peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+            console.log('✅ Remote description set');
+            this.processIceCandidateQueue();
+            
+        } catch (error) {
+            console.error('❌ Error handling answer:', error);
+            UIManager.showError('Call setup failed: ' + error.message);
+            CallManager.cleanupCall();
+        }
+    },
+    
+    handleIceCandidate(data) {
+        if (!data.candidate) return;
+        
+        console.log('🧊 Received ICE candidate');
+        
+        if (!CONFIG.peerConnection) {
+            console.log('Queueing ICE candidate');
+            CONFIG.iceCandidatesQueue.push(data.candidate);
+            return;
+        }
+        
+        try {
+            const iceCandidate = new RTCIceCandidate(data.candidate);
+            CONFIG.peerConnection.addIceCandidate(iceCandidate)
+                .then(() => console.log('✅ ICE candidate added'))
+                .catch(e => console.error('❌ Failed to add ICE candidate:', e));
+        } catch (error) {
+            console.error('❌ Error creating ICE candidate:', error);
+        }
+    },
+    
+    processIceCandidateQueue() {
+        if (!CONFIG.peerConnection || CONFIG.iceCandidatesQueue.length === 0) return;
+        
+        console.log(`Processing ${CONFIG.iceCandidatesQueue.length} queued ICE candidates`);
+        
+        CONFIG.iceCandidatesQueue.forEach(candidate => {
+            try {
+                const iceCandidate = new RTCIceCandidate(candidate);
+                CONFIG.peerConnection.addIceCandidate(iceCandidate)
+                    .catch(e => console.error('❌ Failed to add queued ICE candidate:', e));
+            } catch (error) {
+                console.error('❌ Error processing queued ICE candidate:', error);
+            }
+        });
+        
+        CONFIG.iceCandidatesQueue = [];
+    },
+    
+    // NEW: Function to handle user interaction for autoplay
+    handleUserInteraction() {
+        if (CONFIG.needsUserInteraction && CONFIG.elements.remoteVideo) {
+            console.log('👆 User interaction detected - attempting to play media');
+            CONFIG.elements.remoteVideo.play()
                 .then(() => {
-                    console.log('✅ Remote video playing after user click');
-                    UIManager.showStatus('Call active');
+                    console.log('✅ Media started after user interaction');
+                    CONFIG.needsUserInteraction = false;
+                    UIManager.showStatus('Call connected');
                 })
-                .catch(error => {
-                    console.log('❌ Still blocked after click:', error);
-                    // Show instruction to user
-                    UIManager.showError('Click the play button in video controls');
+                .catch(e => {
+                    console.error('❌ Still failed to play after interaction:', e);
                 });
         }
+    },
+    
+    // Keep your existing debug function
+    checkAudioState() {
+        console.log('🔍 AUDIO STATE CHECK:');
+        
+        if (CONFIG.localStream) {
+            const localAudio = CONFIG.localStream.getAudioTracks();
+            console.log(`Local audio tracks: ${localAudio.length}`);
+        }
+        
+        if (CONFIG.remoteStream) {
+            const remoteAudio = CONFIG.remoteStream.getAudioTracks();
+            console.log(`Remote audio tracks: ${remoteAudio.length}`);
+        }
+        
+        if (CONFIG.elements.remoteVideo) {
+            console.log(`Remote video muted: ${CONFIG.elements.remoteVideo.muted}`);
+        }
     }
-});
+};
 
-
-
-// Export for testing (if needed)
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        loadIceServers,
-        configureSignalingUrl,
-        setupGlobalFunctions
-    };
-}
+window.WebRTCManager = WebRTCManager;
