@@ -292,6 +292,8 @@ const WebRTCManager = {
 
 
 // In webrtc-core.js - COMPLETE NEW VERSION OF replaceMediaTracks
+
+// In webrtc-core.js - FIXED replaceMediaTracks method
 replaceMediaTracks(newStream) {
     return new Promise((resolve, reject) => {
         if (!CONFIG.peerConnection) {
@@ -300,91 +302,99 @@ replaceMediaTracks(newStream) {
             return;
         }
         
-        console.log('🔄 REPLACING MEDIA TRACKS...');
+        console.log('🔄 Starting track replacement...');
         
         // Store old stream for cleanup
         const oldStream = CONFIG.localStream;
         
-        // Update local stream reference immediately
-        CONFIG.localStream = newStream;
-        
-        // Update local video display
-        if (CONFIG.elements.localVideo) {
-            CONFIG.elements.localVideo.srcObject = newStream;
-            CONFIG.elements.localVideo.style.display = newStream.getVideoTracks().length > 0 ? 'block' : 'none';
-            CONFIG.elements.localVideo.muted = true;
-        }
-        
-        // Get all current senders
+        // Get current senders
         const senders = CONFIG.peerConnection.getSenders();
-        console.log('📊 Current senders:', senders.map(s => s.track?.kind));
+        console.log('Current senders:', senders.map(s => s.track?.kind));
         
         // Get new tracks
         const newAudioTrack = newStream.getAudioTracks()[0];
         const newVideoTrack = newStream.getVideoTracks()[0];
         
-        console.log(`🎯 New tracks - Audio: ${!!newAudioTrack}, Video: ${!!newVideoTrack}`);
+        console.log(`New tracks - Audio: ${!!newAudioTrack}, Video: ${!!newVideoTrack}`);
         
-        // Create a function to handle track replacement
-        const replaceTracks = async () => {
-            try {
-                // Handle audio track
-                if (newAudioTrack) {
-                    const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
-                    if (audioSender) {
-                        console.log('🔊 Replacing audio track');
-                        await audioSender.replaceTrack(newAudioTrack);
-                    } else {
-                        console.log('🔊 Adding audio track');
-                        CONFIG.peerConnection.addTrack(newAudioTrack, newStream);
-                    }
+        // Create an array to track replacement promises
+        const replacementPromises = [];
+        
+        // Handle audio track
+        if (newAudioTrack) {
+            const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
+            if (audioSender) {
+                console.log('🔊 Replacing audio track');
+                replacementPromises.push(audioSender.replaceTrack(newAudioTrack));
+            } else {
+                console.log('🔊 Adding audio track');
+                CONFIG.peerConnection.addTrack(newAudioTrack, newStream);
+            }
+        }
+        
+        // Handle video track
+        const videoSenders = senders.filter(s => s.track && s.track.kind === 'video');
+        
+        if (newVideoTrack) {
+            // We have video to send
+            if (videoSenders.length > 0) {
+                console.log('📹 Replacing video track');
+                replacementPromises.push(videoSenders[0].replaceTrack(newVideoTrack));
+                
+                // Remove extra video senders if any
+                for (let i = 1; i < videoSenders.length; i++) {
+                    console.log('🗑️ Removing extra video sender');
+                    replacementPromises.push(videoSenders[i].replaceTrack(null));
                 }
-                
-                // Handle video track - THIS IS THE CRITICAL PART
-                const videoSenders = senders.filter(s => s.track && s.track.kind === 'video');
-                
-                if (newVideoTrack) {
-                    // We want to send video
-                    if (videoSenders.length > 0) {
-                        console.log('📹 Replacing video track');
-                        await videoSenders[0].replaceTrack(newVideoTrack);
-                        
-                        // Remove extra video senders if any
-                        for (let i = 1; i < videoSenders.length; i++) {
-                            console.log('🗑️ Removing extra video sender');
-                            await videoSenders[i].replaceTrack(null);
-                        }
-                    } else {
-                        console.log('📹 Adding video track');
-                        CONFIG.peerConnection.addTrack(newVideoTrack, newStream);
-                    }
-                } else {
-                    // We don't want to send video - remove all video senders
-                    for (const videoSender of videoSenders) {
-                        console.log('📹 Removing video track (audio-only mode)');
-                        await videoSender.replaceTrack(null);
-                    }
-                }
-                
-                // Clean up old stream tracks
+            } else {
+                console.log('📹 Adding video track');
+                CONFIG.peerConnection.addTrack(newVideoTrack, newStream);
+            }
+        } else {
+            // No video - remove all video senders
+            videoSenders.forEach((sender, index) => {
+                console.log(`📹 Removing video sender ${index + 1}`);
+                replacementPromises.push(sender.replaceTrack(null));
+            });
+        }
+        
+        // Wait for all replacements to complete
+        Promise.all(replacementPromises)
+            .then(() => {
+                // Update local stream reference
                 if (oldStream) {
                     oldStream.getTracks().forEach(track => {
-                        track.stop();
-                        console.log(`⏹️ Stopped old ${track.kind} track`);
+                        if (track !== newAudioTrack && track !== newVideoTrack) {
+                            track.stop();
+                            console.log(`⏹️ Stopped old ${track.kind} track`);
+                        }
                     });
+                }
+                
+                CONFIG.localStream = newStream;
+                
+                // Update local video display
+                if (CONFIG.elements.localVideo) {
+                    CONFIG.elements.localVideo.srcObject = newStream;
+                    CONFIG.elements.localVideo.style.display = newVideoTrack ? 'block' : 'none';
+                    CONFIG.elements.localVideo.muted = true;
                 }
                 
                 console.log('✅ Media tracks replaced successfully');
                 resolve();
                 
-            } catch (error) {
+                // If we're the initiator, trigger renegotiation after a short delay
+                if (CONFIG.isInitiator) {
+                    setTimeout(() => {
+                        console.log('🔄 Initiator: Creating new offer for renegotiation');
+                        this.createAndSendOffer();
+                    }, 100);
+                }
+            })
+            .catch(error => {
                 console.error('❌ Error replacing tracks:', error);
                 reject(error);
-            }
-        };
-        
-        // Execute track replacement
-        replaceTracks();
+            });
     });
 }
 
