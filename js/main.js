@@ -1,347 +1,190 @@
-// js/webrtc-core.js - RESTORED AUTOPLAY VERSION
-const WebRTCManager = {
-    createPeerConnection() {
-        console.log('🔗 Creating peer connection...');
-        
-        const config = {
-            iceServers: [
-                { urls: "stun:stun.l.google.com:19302" },
-                { urls: "stun:stun1.l.google.com:19302" }
-            ],
-            iceCandidatePoolSize: 10,
-            // Audio-specific optimizations
-            sdpSemantics: 'unified-plan',
-            bundlePolicy: 'max-bundle',
-            rtcpMuxPolicy: 'require'
-        };
-        
-        CONFIG.peerConnection = new RTCPeerConnection(config);
-        
-        // CRITICAL: Initialize remote stream immediately
-        CONFIG.remoteStream = new MediaStream();
-        
-        // Set up remote video element IMMEDIATELY
-        if (CONFIG.elements.remoteVideo) {
-            CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
-            CONFIG.elements.remoteVideo.muted = false;  // THIS IS KEY FOR AUDIO
-            CONFIG.elements.remoteVideo.volume = 1.0;
-            console.log('🎬 Remote video element prepared for autoplay');
-        }
-        
-        // DEBUG: Check what tracks we have
-        if (CONFIG.localStream) {
-            const audioTracks = CONFIG.localStream.getAudioTracks();
-            console.log(`🎤 Local audio tracks: ${audioTracks.length}`);
-            
-            audioTracks.forEach(track => {
-                console.log(`  Audio track: enabled=${track.enabled}, readyState=${track.readyState}`);
-            });
-        }
-        
-        // Add local tracks to peer connection
-        if (CONFIG.localStream && CONFIG.hasMediaPermissions) {
-            const audioTracks = CONFIG.localStream.getAudioTracks();
-            
-            // Add audio tracks FIRST (most important)
-            if (audioTracks.length > 0) {
-                audioTracks.forEach(track => {
-                    try {
-                        // Ensure audio track is enabled
-                        track.enabled = true;
-                        CONFIG.peerConnection.addTrack(track, CONFIG.localStream);
-                        console.log(`✅ Added AUDIO track: ${track.id.substring(0, 10)}...`);
-                    } catch (error) {
-                        console.error('❌ Failed to add audio track:', error);
-                    }
-                });
-            } else {
-                console.warn('⚠️ WARNING: No audio tracks found!');
-            }
-            
-            // Add video tracks
-            CONFIG.localStream.getVideoTracks().forEach(track => {
-                try {
-                    CONFIG.peerConnection.addTrack(track, CONFIG.localStream);
-                    console.log(`✅ Added VIDEO track: ${track.id.substring(0, 10)}...`);
-                } catch (error) {
-                    console.error('❌ Failed to add video track:', error);
-                }
-            });
-        }
-        
-        // Handle incoming tracks - AUTOPLAY VERSION (from working code)
-        CONFIG.peerConnection.ontrack = (event) => {
-            console.log('🎬 ontrack event:', event.track.kind);
-            
-            if (event.track) {
-                // Add track to our remote stream
-                CONFIG.remoteStream.addTrack(event.track);
-                
-                // CRITICAL: Update the remote video element
-                if (CONFIG.elements.remoteVideo) {
-                    // Ensure we're using the correct stream
-                    CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
-                    // ENSURE AUDIO IS NOT MUTED
-                    CONFIG.elements.remoteVideo.muted = false;
-                    
-                    // TRY TO PLAY IMMEDIATELY (like working version)
-                    const playPromise = CONFIG.elements.remoteVideo.play();
-                    
-                    if (playPromise !== undefined) {
-                        playPromise
-                            .then(() => {
-                                console.log(`▶️ Remote ${event.track.kind} playing AUTOMATICALLY`);
-                                
-                                // Check audio state
-                                if (event.track.kind === 'audio') {
-                                    console.log('🔊 AUDIO TRACK AUTOPLAY SUCCESS!');
-                                    setTimeout(() => {
-                                        const audioTracks = CONFIG.remoteStream.getAudioTracks();
-                                        console.log(`Remote audio tracks: ${audioTracks.length}`);
-                                    }, 100);
-                                }
-                            })
-                            .catch(error => {
-                                console.log(`⚠️ Autoplay failed for ${event.track.kind}:`, error);
-                                console.log('ℹ️ This is normal in Chrome without user gesture');
-                                
-                                // Store that we need user interaction
-                                CONFIG.needsUserInteraction = true;
-                                UIManager.showStatus('Click anywhere to start audio');
-                            });
-                    }
-                }
-            }
-        };
-        
-        // ICE candidate handling
-        CONFIG.peerConnection.onicecandidate = (event) => {
-            if (event.candidate && CONFIG.targetSocketId) {
-                console.log('🧊 Sending ICE candidate');
-                WebSocketClient.sendToServer({
-                    type: 'ice-candidate',
-                    targetSocketId: CONFIG.targetSocketId,
-                    candidate: event.candidate
-                });
-            }
-        };
-        
-        // Connection state monitoring
-        CONFIG.peerConnection.onconnectionstatechange = () => {
-            console.log('🔗 Connection state:', CONFIG.peerConnection.connectionState);
-            
-            switch (CONFIG.peerConnection.connectionState) {
-                case 'connected':
-                    console.log('✅ PEER CONNECTION CONNECTED!');
-                    CONFIG.isInCall = true;
-                    CONFIG.isProcessingAnswer = false;
-                    UIManager.showStatus('Call connected');
-                    UIManager.updateCallButtons();
-                    
-                    // Try to play remote video if not already playing
-                    if (CONFIG.elements.remoteVideo && CONFIG.remoteStream) {
-                        setTimeout(() => {
-                            const playPromise = CONFIG.elements.remoteVideo.play();
-                            if (playPromise !== undefined) {
-                                playPromise.catch(e => {
-                                    console.log('⚠️ Post-connection autoplay attempt failed:', e);
-                                });
-                            }
-                        }, 500);
-                    }
-                    
-                    // Final audio check
-                    setTimeout(() => {
-                        const audioTracks = CONFIG.remoteStream.getAudioTracks();
-                        console.log(`🔊 Connected! Remote audio tracks: ${audioTracks.length}`);
-                    }, 500);
-                    break;
-                    
-                case 'disconnected':
-                case 'failed':
-                case 'closed':
-                    console.log('❌ Peer connection ended');
-                    if (CONFIG.peerConnection.connectionState === 'closed') {
-                        CallManager.cleanupCall();
-                    }
-                    break;
-            }
-        };
-        
-        console.log('✅ Peer connection created');
-    },
+// js/main.js
+// Main entry point - initializes all modules
+
+console.log('WebRTC Client Initializing...');
+
+// Initialize CONFIG object first
+window.CONFIG = window.CONFIG || {
+    // Core state
+    myUsername: null,
+    mySocketId: null,
+    isAdmin: false,
+    isInCall: false,
+    isCaller: false,
     
-    async createAndSendOffer() {
-        if (!CONFIG.peerConnection || !CONFIG.targetSocketId) {
-            console.error('No peer connection or target');
-            return;
-        }
-        
-        try {
-            console.log('📤 Creating offer...');
-            
-            const offer = await CONFIG.peerConnection.createOffer({
-                offerToReceiveAudio: true,
-                offerToReceiveVideo: true
-            });
-            
-            // Check SDP for audio
-            if (offer.sdp) {
-                const hasAudio = offer.sdp.includes('m=audio');
-                console.log(`📄 SDP - Has audio: ${hasAudio ? '✅' : '❌'}`);
-                
-                // Log audio codecs
-                if (offer.sdp.includes('opus')) console.log('  Using Opus codec');
-                if (offer.sdp.includes('ISAC')) console.log('  Using ISAC codec');
-            }
-            
-            await CONFIG.peerConnection.setLocalDescription(offer);
-            console.log('✅ Local description set');
-            
-            WebSocketClient.sendToServer({
-                type: 'offer',
-                targetSocketId: CONFIG.targetSocketId,
-                offer: offer,
-                sender: CONFIG.myUsername
-            });
-            
-            console.log('✅ Offer sent');
-            
-        } catch (error) {
-            console.error('❌ Error creating/sending offer:', error);
-            UIManager.showError('Failed to start call: ' + error.message);
-            CallManager.cleanupCall();
-        }
-    },
+    // WebRTC
+    peerConnection: null,
+    localStream: null,
+    remoteStream: null,
+    targetSocketId: null,
+    incomingCallFrom: null,
     
-    async handleOffer(data) {
-        console.log('📥 Received offer from:', data.sender || 'unknown');
-        
-        if (!CONFIG.peerConnection) {
-            this.createPeerConnection();
-        }
-        
-        if (data.senderSocketId && !CONFIG.targetSocketId) {
-            CONFIG.targetSocketId = data.senderSocketId;
-        }
-        
-        try {
-            await CONFIG.peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-            console.log('✅ Remote description set');
-            
-            const answer = await CONFIG.peerConnection.createAnswer();
-            await CONFIG.peerConnection.setLocalDescription(answer);
-            
-            WebSocketClient.sendToServer({
-                type: 'answer',
-                targetSocketId: CONFIG.targetSocketId,
-                answer: answer,
-                sender: CONFIG.myUsername
-            });
-            
-            console.log('✅ Answer sent');
-            this.processIceCandidateQueue();
-            
-        } catch (error) {
-            console.error('❌ Error handling offer:', error);
-            UIManager.showError('Call setup failed: ' + error.message);
-            CallManager.cleanupCall();
-        }
-    },
+    // Media
+    hasMediaPermissions: false,
+    needsUserInteraction: false,
     
-    async handleAnswer(data) {
-        console.log('📥 Received answer from:', data.sender || 'unknown');
-        
-        if (!CONFIG.peerConnection) {
-            console.error('No peer connection for answer');
-            return;
-        }
-        
-        try {
-            await CONFIG.peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-            console.log('✅ Remote description set');
-            this.processIceCandidateQueue();
-            
-        } catch (error) {
-            console.error('❌ Error handling answer:', error);
-            UIManager.showError('Call setup failed: ' + error.message);
-            CallManager.cleanupCall();
-        }
-    },
+    // ICE
+    iceCandidatesQueue: [],
     
-    handleIceCandidate(data) {
-        if (!data.candidate) return;
-        
-        console.log('🧊 Received ICE candidate');
-        
-        if (!CONFIG.peerConnection) {
-            console.log('Queueing ICE candidate');
-            CONFIG.iceCandidatesQueue.push(data.candidate);
-            return;
-        }
-        
-        try {
-            const iceCandidate = new RTCIceCandidate(data.candidate);
-            CONFIG.peerConnection.addIceCandidate(iceCandidate)
-                .then(() => console.log('✅ ICE candidate added'))
-                .catch(e => console.error('❌ Failed to add ICE candidate:', e));
-        } catch (error) {
-            console.error('❌ Error creating ICE candidate:', error);
-        }
-    },
-    
-    processIceCandidateQueue() {
-        if (!CONFIG.peerConnection || CONFIG.iceCandidatesQueue.length === 0) return;
-        
-        console.log(`Processing ${CONFIG.iceCandidatesQueue.length} queued ICE candidates`);
-        
-        CONFIG.iceCandidatesQueue.forEach(candidate => {
-            try {
-                const iceCandidate = new RTCIceCandidate(candidate);
-                CONFIG.peerConnection.addIceCandidate(iceCandidate)
-                    .catch(e => console.error('❌ Failed to add queued ICE candidate:', e));
-            } catch (error) {
-                console.error('❌ Error processing queued ICE candidate:', error);
-            }
-        });
-        
-        CONFIG.iceCandidatesQueue = [];
-    },
-    
-    // NEW: Function to handle user interaction for autoplay
-    handleUserInteraction() {
-        if (CONFIG.needsUserInteraction && CONFIG.elements.remoteVideo) {
-            console.log('👆 User interaction detected - attempting to play media');
-            CONFIG.elements.remoteVideo.play()
-                .then(() => {
-                    console.log('✅ Media started after user interaction');
-                    CONFIG.needsUserInteraction = false;
-                    UIManager.showStatus('Call connected');
-                })
-                .catch(e => {
-                    console.error('❌ Still failed to play after interaction:', e);
-                });
-        }
-    },
-    
-    // Keep your existing debug function
-    checkAudioState() {
-        console.log('🔍 AUDIO STATE CHECK:');
-        
-        if (CONFIG.localStream) {
-            const localAudio = CONFIG.localStream.getAudioTracks();
-            console.log(`Local audio tracks: ${localAudio.length}`);
-        }
-        
-        if (CONFIG.remoteStream) {
-            const remoteAudio = CONFIG.remoteStream.getAudioTracks();
-            console.log(`Remote audio tracks: ${remoteAudio.length}`);
-        }
-        
-        if (CONFIG.elements.remoteVideo) {
-            console.log(`Remote video muted: ${CONFIG.elements.remoteVideo.muted}`);
-        }
+    // UI elements
+    elements: {
+        username: null,
+        password: null,
+        status: null,
+        localVideo: null,
+        remoteVideo: null,
+        loginDiv: null,
+        callDiv: null,
+        userList: null
     }
 };
 
-window.WebRTCManager = WebRTCManager;
+// Initialize modules
+function initializeApp() {
+    console.log('Environment:', {
+        isLocalhost: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1',
+        isGitHubPages: window.location.hostname.includes('github.io'),
+        isSecure: window.location.protocol === 'https:',
+        userAgent: navigator.userAgent,
+        platform: navigator.platform
+    });
+    
+    // Initialize UI elements
+    CONFIG.elements = {
+        username: document.getElementById('username'),
+        password: document.getElementById('password'),
+        status: document.getElementById('status'),
+        localVideo: document.getElementById('localVideo'),
+        remoteVideo: document.getElementById('remoteVideo'),
+        loginDiv: document.getElementById('login'),
+        callDiv: document.getElementById('call'),
+        userList: document.getElementById('userList')
+    };
+    
+    // Initialize UI Manager
+    UIManager.init();
+    
+    // Try different ICE sources
+    getIceServers();
+    
+    console.log('App initialized');
+}
+
+// ICE server configuration
+async function getIceServers() {
+    console.log('Trying ICE source: cloudflare-worker');
+    
+    try {
+        // Primary: Cloudflare Worker (Twilio)
+        const response = await fetch('https://turn-token.easosunov.workers.dev/ice');
+        const data = await response.json();
+        
+        if (data.iceServers && data.iceServers.length > 0) {
+            CONFIG.peerConfig = {
+                iceServers: data.iceServers,
+                iceCandidatePoolSize: 10,
+                sdpSemantics: 'unified-plan',
+                bundlePolicy: 'max-bundle',
+                rtcpMuxPolicy: 'require'
+            };
+            console.log('✓ ICE servers from cloudflare-worker:', data.iceServers.length, 'servers');
+            return;
+        }
+    } catch (error) {
+        console.log('Cloudflare Worker failed:', error.message);
+    }
+    
+    // Fallback: Public STUN servers
+    console.log('Using fallback STUN servers');
+    CONFIG.peerConfig = {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' }
+        ],
+        iceCandidatePoolSize: 10,
+        sdpSemantics: 'unified-plan',
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require'
+    };
+}
+
+// GitHub Pages specific setup
+if (window.location.hostname.includes('github.io')) {
+    console.log('GitHub Pages environment: Cloud signaling required');
+    // WebSocket URL is set in websocket-client.js
+}
+
+// Global functions for UI buttons
+function login() {
+    AuthManager.login();
+}
+
+function logout() {
+    AuthManager.logout();
+}
+
+function callAdmin() {
+    CallManager.callAdmin();
+}
+
+function hangup() {
+    CallManager.hangup();
+}
+
+function debug() {
+    console.log('=== DEBUG INFO ===');
+    console.log('CONFIG:', CONFIG);
+    console.log('WebSocket:', WebSocketClient && WebSocketClient.socket ? 'Connected' : 'Disconnected');
+    console.log('Peer Connection:', CONFIG.peerConnection ? CONFIG.peerConnection.connectionState : 'None');
+    
+    if (CONFIG.localStream) {
+        const tracks = CONFIG.localStream.getTracks();
+        console.log('Local tracks:', tracks.map(t => `${t.kind}:${t.enabled ? 'on' : 'off'}`));
+    }
+    
+    if (CONFIG.remoteStream) {
+        const tracks = CONFIG.remoteStream.getTracks();
+        console.log('Remote tracks:', tracks.map(t => `${t.kind}:${t.enabled ? 'on' : 'off'}`));
+    }
+    
+    if (window.WebRTCManager && typeof WebRTCManager.checkAudioState === 'function') {
+        WebRTCManager.checkAudioState();
+    }
+}
+
+// OLD playVideo function - updated to use new autoplay system
+function playVideo() {
+    console.log('playVideo called - forwarding to WebRTCManager');
+    if (window.WebRTCManager && typeof WebRTCManager.handleUserInteraction === 'function') {
+        WebRTCManager.handleUserInteraction();
+    } else {
+        console.warn('WebRTCManager.handleUserInteraction not available');
+        UIManager.showStatus('Autoplay handler not ready');
+    }
+}
+
+// Handle Chrome autoplay policy - global click listener
+// This allows user to click anywhere to start audio if blocked
+document.addEventListener('click', function() {
+    if (window.WebRTCManager && typeof WebRTCManager.handleUserInteraction === 'function') {
+        WebRTCManager.handleUserInteraction();
+    }
+});
+
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+    initializeApp();
+}
+
+// Make functions globally available
+window.login = login;
+window.logout = logout;
+window.callAdmin = callAdmin;
+window.hangup = hangup;
+window.debug = debug;
+window.playVideo = playVideo;
