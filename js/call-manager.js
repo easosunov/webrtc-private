@@ -123,37 +123,51 @@ const CallManager = {
         }, 30000);
     },
     
-    async answerCall() {
-        if (CONFIG.isProcessingAnswer || !CONFIG.incomingCallFrom) {
-            return;
+ 
+
+
+async function answerCall() {
+    console.log('📞 Answering incoming call...');
+    
+    if (!CONFIG.incomingCallFrom) {
+        console.error('No incoming call to answer');
+        return;
+    }
+    
+    try {
+        // Set target to the caller
+        CONFIG.targetSocketId = CONFIG.incomingCallFrom;
+        CONFIG.isInCall = true;
+        
+        // Create peer connection first
+        if (!CONFIG.peerConnection) {
+            WebRTCManager.createPeerConnection();
         }
         
-        CONFIG.isProcessingAnswer = true;
-        console.log('Answering call from:', CONFIG.incomingCallFrom);
-        UIManager.showStatus('Answering call...');
-        UIManager.updateCallButtons();
+        // Wait a moment for peer connection to be ready
+        await new Promise(resolve => setTimeout(resolve, 100));
         
-        // Ensure permissions
-        const hasPerms = await AuthManager.ensureMediaPermissions();
-        if (!hasPerms) {
-            UIManager.showError('Need camera/mic permissions to answer');
-            CONFIG.isProcessingAnswer = false;
-            UIManager.updateCallButtons();
-            return;
-        }
-        
-        // Send acceptance - FIXED: Use to/from fields
+        // Send call-accept message to signaling server
         WebSocketClient.sendToServer({
             type: 'call-accept',
-            to: CONFIG.targetSocketId,
-            from: CONFIG.myId
+            targetSocketId: CONFIG.targetSocketId,
+            sender: CONFIG.myUsername
         });
         
-        // Create peer connection
-        WebRTCManager.createPeerConnection();
+        UIManager.showStatus('Answered call - waiting for offer...');
+        UIManager.updateCallButtons();
         
-        UIManager.showStatus('Connecting...');
-    },
+        // The offer should come next from the caller
+        console.log('✅ Call answered, waiting for WebRTC offer...');
+        
+    } catch (error) {
+        console.error('❌ Error answering call:', error);
+        UIManager.showError('Failed to answer call: ' + error.message);
+        CallManager.cleanupCall();
+    }
+}
+ 
+ 
     
     rejectCall() {
         console.log('Rejecting call');
