@@ -332,6 +332,25 @@ function setupGlobalFunctions() {
     console.log('Environment:', CONFIG.environment);
 })();
 
+window.playVideo = function() {
+    console.log('Playing videos...');
+    
+    if (CONFIG.elements.localVideo) {
+        CONFIG.elements.localVideo.play()
+            .then(() => console.log('Local video playing'))
+            .catch(e => console.log('Local video play error:', e));
+    }
+    
+    if (CONFIG.elements.remoteVideo && CONFIG.elements.remoteVideo.srcObject) {
+        CONFIG.elements.remoteVideo.play()
+            .then(() => {
+                console.log('Remote video playing');
+                UIManager.showStatus('Call active - media playing');
+            })
+            .catch(e => console.log('Remote video play error:', e));
+    }
+};
+
 // Export for testing (if needed)
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
