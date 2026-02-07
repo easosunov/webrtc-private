@@ -1,6 +1,17 @@
-// js/call-manager.js - COMPLETE VERSION
+// js/call-manager.js - FIXED VERSION
 const CallManager = {
+    lastCallTime: 0,
+    CALL_COOLDOWN: 3000,
+    
     async callUser(userToCall, socketToCall) {
+        // Prevent duplicate calls
+        const now = Date.now();
+        if (now - this.lastCallTime < this.CALL_COOLDOWN) {
+            console.log('Call cooldown, please wait');
+            return;
+        }
+        this.lastCallTime = now;
+        
         if (CONFIG.isInCall || CONFIG.isProcessingAnswer) {
             UIManager.showError('Already in a call');
             return;
@@ -33,30 +44,30 @@ const CallManager = {
         WebRTCManager.createPeerConnection();
         
         // Send call initiation
-		
-		WebSocketClient.sendToServer({
-    		type: 'call-initiate',
-   		 	to: 'admin',  // Fixed string
-    		from: CONFIG.myId  // Make sure this is set
-		});
+        WebSocketClient.sendToServer({
+            type: 'call-initiate',
+            to: userToCall,  // Dynamic, not hardcoded 'admin'
+            from: CONFIG.myId
+        });
         
         console.log('Waiting for user to accept call...');
     },
     
     handleCallInitiated(data) {
-        console.log(`📞 Incoming call from ${data.callerName}`);
+        console.log(`📞 Incoming call from ${data.from}`);
         
         if (CONFIG.isInCall || CONFIG.isProcessingAnswer) {
             console.log('Already in call, ignoring');
             return;
         }
         
-        CONFIG.targetSocketId = data.callerSocketId;
-        CONFIG.targetUsername = data.callerName;
-        CONFIG.incomingCallFrom = data.callerName;
+        // Fix: Use data.from (not data.callerName)
+        CONFIG.targetSocketId = data.from;
+        CONFIG.targetUsername = data.from;
+        CONFIG.incomingCallFrom = data.from;
         CONFIG.isInitiator = false;
         
-        this.showIncomingCallNotification(data.callerName);
+        this.showIncomingCallNotification(data.from);
         UIManager.updateCallButtons();
     },
     
@@ -131,12 +142,12 @@ const CallManager = {
             return;
         }
         
-        // Send acceptance
-		WebSocketClient.sendToServer({
-			type: 'call-accept',
-			to: CONFIG.targetSocketId,  // Changed from targetSocketId
-			from: CONFIG.myId  // Added from field
-		});
+        // Send acceptance - FIXED: Use to/from fields
+        WebSocketClient.sendToServer({
+            type: 'call-accept',
+            to: CONFIG.targetSocketId,
+            from: CONFIG.myId
+        });
         
         // Create peer connection
         WebRTCManager.createPeerConnection();
@@ -148,9 +159,11 @@ const CallManager = {
         console.log('Rejecting call');
         
         if (CONFIG.targetSocketId) {
+            // FIXED: Use to/from fields
             WebSocketClient.sendToServer({
                 type: 'call-reject',
-                targetSocketId: CONFIG.targetSocketId
+                to: CONFIG.targetSocketId,
+                from: CONFIG.myId
             });
         }
         
@@ -168,7 +181,7 @@ const CallManager = {
     },
     
     handleCallAccepted(data) {
-        console.log('✅ Call accepted by:', data.calleeName);
+        console.log('✅ Call accepted by:', data.from);
         UIManager.showStatus('Call accepted - connecting...');
         
         if (CONFIG.isInitiator) {
@@ -186,15 +199,15 @@ const CallManager = {
     },
     
     handleCallRejected(data) {
-        console.log('Call rejected by:', data.rejecterName);
+        console.log('Call rejected by:', data.from);
         this.cleanupCall();
-        UIManager.showStatus('Call rejected by ' + (data.rejecterName || 'user'));
+        UIManager.showStatus('Call rejected by ' + (data.from || 'user'));
     },
     
     handleCallEnded(data) {
-        console.log('Call ended by remote:', data.endedByName || 'remote user');
+        console.log('Call ended by remote:', data.from || 'remote user');
         this.cleanupCall();
-        UIManager.showStatus('Call ended by ' + (data.endedByName || 'remote user'));
+        UIManager.showStatus('Call ended by ' + (data.from || 'remote user'));
     },
     
     hangup() {
@@ -202,9 +215,11 @@ const CallManager = {
         UIManager.showStatus('Ending call...');
         
         if (CONFIG.targetSocketId) {
+            // FIXED: Use to/from fields
             WebSocketClient.sendToServer({
                 type: 'call-end',
-                targetSocketId: CONFIG.targetSocketId
+                to: CONFIG.targetSocketId,
+                from: CONFIG.myId
             });
         }
         
@@ -239,8 +254,10 @@ const CallManager = {
         
         UIManager.showStatus('Ready');
         UIManager.updateCallButtons();
+        
+        // Reset cooldown
+        this.lastCallTime = 0;
     }
 };
 
 window.CallManager = CallManager;
-
