@@ -22,12 +22,8 @@ const CallManager = {
         // Update UI buttons
         UIManager.updateCallButtons();
         
-        // Ensure permissions
-        const hasPerms = await AuthManager.ensureMediaPermissions();
-        if (!hasPerms) {
-            UIManager.showError('Need camera/mic permissions to call');
-            return;
-        }
+        // FIX: Ensure we have the correct media stream based on current resolution
+        await this.ensureCorrectMediaStream();
         
         // Create peer connection
         WebRTCManager.createPeerConnection();
@@ -41,6 +37,77 @@ const CallManager = {
         });
         
         console.log('Waiting for user to accept call...');
+    },
+    
+    // FIX: New method to ensure correct media stream
+    async ensureCorrectMediaStream() {
+        try {
+            const hasPerms = await AuthManager.ensureMediaPermissions();
+            if (!hasPerms) {
+                throw new Error('Need camera/mic permissions to call');
+            }
+            
+            // Get current resolution constraints
+            const constraints = UIManager.getCurrentResolutionConstraints();
+            
+            // Check if current stream matches requirements
+            const needsNewStream = !CONFIG.localStream || 
+                                  this.streamNeedsUpdate(CONFIG.localStream, constraints);
+            
+            if (needsNewStream) {
+                console.log('Getting new media stream with current resolution settings...');
+                
+                // Stop old tracks if they exist
+                if (CONFIG.localStream) {
+                    CONFIG.localStream.getTracks().forEach(track => track.stop());
+                }
+                
+                // Get new stream
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                CONFIG.localStream = stream;
+                
+                // Update local video display
+                if (CONFIG.elements.localVideo) {
+                    CONFIG.elements.localVideo.srcObject = stream;
+                    CONFIG.elements.localVideo.muted = true;
+                    CONFIG.elements.localVideo.style.display = constraints.video ? 'block' : 'none';
+                }
+                
+                console.log('✅ Media stream updated with current resolution');
+            }
+            
+            return true;
+            
+        } catch (error) {
+            console.error('Failed to ensure media stream:', error);
+            throw error;
+        }
+    },
+    
+    // Helper to check if stream needs update
+    streamNeedsUpdate(stream, constraints) {
+        const hasAudio = stream.getAudioTracks().length > 0;
+        const hasVideo = stream.getVideoTracks().length > 0;
+        const needsVideo = constraints.video !== false;
+        
+        // Check if audio/video presence matches requirements
+        if (!hasAudio || (needsVideo && !hasVideo) || (!needsVideo && hasVideo)) {
+            return true;
+        }
+        
+        // For video, check if resolution matches
+        if (needsVideo && hasVideo) {
+            const videoTrack = stream.getVideoTracks()[0];
+            const settings = videoTrack.getSettings();
+            const targetWidth = constraints.video.width?.ideal || constraints.video.width?.max;
+            const targetHeight = constraints.video.height?.ideal || constraints.video.height?.max;
+            
+            if (targetWidth && targetHeight) {
+                return settings.width !== targetWidth || settings.height !== targetHeight;
+            }
+        }
+        
+        return false;
     },
     
     handleCallInitiated(data) {
@@ -122,27 +189,29 @@ const CallManager = {
         UIManager.showStatus('Answering call...');
         UIManager.updateCallButtons();
         
-        // Ensure permissions
-        const hasPerms = await AuthManager.ensureMediaPermissions();
-        if (!hasPerms) {
-            UIManager.showError('Need camera/mic permissions to answer');
+        try {
+            // FIX: Ensure we have the correct media stream
+            await this.ensureCorrectMediaStream();
+            
+            // Send acceptance
+            WebSocketClient.sendToServer({
+                type: 'call-accept',
+                targetSocketId: CONFIG.targetSocketId,
+                calleeId: CONFIG.myId,
+                calleeName: CONFIG.myUsername
+            });
+            
+            // Create peer connection
+            WebRTCManager.createPeerConnection();
+            
+            UIManager.showStatus('Connecting...');
+            
+        } catch (error) {
+            console.error('Failed to answer call:', error);
+            UIManager.showError(error.message || 'Failed to answer call');
             CONFIG.isProcessingAnswer = false;
             UIManager.updateCallButtons();
-            return;
         }
-        
-        // Send acceptance
-        WebSocketClient.sendToServer({
-            type: 'call-accept',
-            targetSocketId: CONFIG.targetSocketId,
-            calleeId: CONFIG.myId,
-            calleeName: CONFIG.myUsername
-        });
-        
-        // Create peer connection
-        WebRTCManager.createPeerConnection();
-        
-        UIManager.showStatus('Connecting...');
     },
     
     rejectCall() {
