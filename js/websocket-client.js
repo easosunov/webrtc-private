@@ -69,26 +69,16 @@ const WebSocketClient = {
                 CONFIG.adminSocketId = data.adminSocketId;
                 console.log('✅ Admin online:', CONFIG.adminSocketId);
                 UIManager.showStatus('Admin online - ready to call');
+                UIManager.updateCallButtons();
                 break;
-				
-
-// Update the admin-offline handler:
-
-case 'admin-offline':
-    // Clear ALL admin-related state
-    CONFIG.adminSocketId = null;
-    
-    // NEW: If we were trying to call admin, reset that state
-    if (CONFIG.targetSocketId === data.adminSocketId) {
-        CONFIG.targetSocketId = null;
-        CONFIG.isProcessingAnswer = false;
-    }
-    
-    console.log('❌ Admin offline - reset all admin state');
-    UIManager.showStatus('Admin offline');
-    UIManager.updateCallButtons();
-    break;
-				
+                
+            case 'admin-offline':
+                CONFIG.adminSocketId = null;
+                console.log('❌ Admin offline');
+                UIManager.showStatus('Admin offline');
+                UIManager.updateCallButtons();
+                break;
+                
             case 'call-initiated':
                 CallManager.handleCallInitiated(data);
                 break;
