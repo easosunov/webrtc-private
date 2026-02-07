@@ -211,12 +211,12 @@ function setupGlobalFunctions() {
     
     // Admin call shortcut
     window.callAdmin = function() {
-        if (CONFIG.adminSocketId) {
-            CallManager.callUser('admin', CONFIG.adminSocketId);
-        } else {
-            UIManager.showError('Admin is offline');
-        }
-    };
+    if (CONFIG.adminSocketId) {
+        CallManager.callUser('Administrator', CONFIG.adminSocketId);
+		} else {
+        UIManager.showError('Administrator is not online');
+		}
+	};
     
     // Connection management
     window.retryConnection = async function() {
