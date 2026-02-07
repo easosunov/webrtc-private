@@ -1,17 +1,6 @@
-// js/call-manager.js - FIXED VERSION
+// js/call-manager.js - COMPLETE VERSION
 const CallManager = {
-    lastCallTime: 0,
-    CALL_COOLDOWN: 3000,
-    
     async callUser(userToCall, socketToCall) {
-        // Prevent duplicate calls
-        const now = Date.now();
-        if (now - this.lastCallTime < this.CALL_COOLDOWN) {
-            console.log('Call cooldown, please wait');
-            return;
-        }
-        this.lastCallTime = now;
-        
         if (CONFIG.isInCall || CONFIG.isProcessingAnswer) {
             UIManager.showError('Already in a call');
             return;
@@ -46,28 +35,28 @@ const CallManager = {
         // Send call initiation
         WebSocketClient.sendToServer({
             type: 'call-initiate',
-            to: userToCall,  // Dynamic, not hardcoded 'admin'
-            from: CONFIG.myId
+            targetSocketId: socketToCall,
+            callerId: CONFIG.myId,
+            callerName: CONFIG.myUsername
         });
         
         console.log('Waiting for user to accept call...');
     },
     
     handleCallInitiated(data) {
-        console.log(`📞 Incoming call from ${data.from}`);
+        console.log(`📞 Incoming call from ${data.callerName}`);
         
         if (CONFIG.isInCall || CONFIG.isProcessingAnswer) {
             console.log('Already in call, ignoring');
             return;
         }
         
-        // Fix: Use data.from (not data.callerName)
-        CONFIG.targetSocketId = data.from;
-        CONFIG.targetUsername = data.from;
-        CONFIG.incomingCallFrom = data.from;
+        CONFIG.targetSocketId = data.callerSocketId;
+        CONFIG.targetUsername = data.callerName;
+        CONFIG.incomingCallFrom = data.callerName;
         CONFIG.isInitiator = false;
         
-        this.showIncomingCallNotification(data.from);
+        this.showIncomingCallNotification(data.callerName);
         UIManager.updateCallButtons();
     },
     
@@ -123,61 +112,46 @@ const CallManager = {
         }, 30000);
     },
     
- 
-
-
-async function answerCall() {
-    console.log('📞 Answering incoming call...');
-    
-    if (!CONFIG.incomingCallFrom) {
-        console.error('No incoming call to answer');
-        return;
-    }
-    
-    try {
-        // Set target to the caller
-        CONFIG.targetSocketId = CONFIG.incomingCallFrom;
-        CONFIG.isInCall = true;
-        
-        // Create peer connection first
-        if (!CONFIG.peerConnection) {
-            WebRTCManager.createPeerConnection();
+    async answerCall() {
+        if (CONFIG.isProcessingAnswer || !CONFIG.incomingCallFrom) {
+            return;
         }
         
-        // Wait a moment for peer connection to be ready
-        await new Promise(resolve => setTimeout(resolve, 100));
+        CONFIG.isProcessingAnswer = true;
+        console.log('Answering call from:', CONFIG.incomingCallFrom);
+        UIManager.showStatus('Answering call...');
+        UIManager.updateCallButtons();
         
-        // Send call-accept message to signaling server
+        // Ensure permissions
+        const hasPerms = await AuthManager.ensureMediaPermissions();
+        if (!hasPerms) {
+            UIManager.showError('Need camera/mic permissions to answer');
+            CONFIG.isProcessingAnswer = false;
+            UIManager.updateCallButtons();
+            return;
+        }
+        
+        // Send acceptance
         WebSocketClient.sendToServer({
             type: 'call-accept',
             targetSocketId: CONFIG.targetSocketId,
-            sender: CONFIG.myUsername
+            calleeId: CONFIG.myId,
+            calleeName: CONFIG.myUsername
         });
         
-        UIManager.showStatus('Answered call - waiting for offer...');
-        UIManager.updateCallButtons();
+        // Create peer connection
+        WebRTCManager.createPeerConnection();
         
-        // The offer should come next from the caller
-        console.log('✅ Call answered, waiting for WebRTC offer...');
-        
-    } catch (error) {
-        console.error('❌ Error answering call:', error);
-        UIManager.showError('Failed to answer call: ' + error.message);
-        CallManager.cleanupCall();
-    }
-}
- 
- 
+        UIManager.showStatus('Connecting...');
+    },
     
     rejectCall() {
         console.log('Rejecting call');
         
         if (CONFIG.targetSocketId) {
-            // FIXED: Use to/from fields
             WebSocketClient.sendToServer({
                 type: 'call-reject',
-                to: CONFIG.targetSocketId,
-                from: CONFIG.myId
+                targetSocketId: CONFIG.targetSocketId
             });
         }
         
@@ -195,10 +169,9 @@ async function answerCall() {
     },
     
     handleCallAccepted(data) {
-        console.log('✅ Call accepted by:', data.from);
+        console.log('✅ Call accepted by:', data.calleeName);
         UIManager.showStatus('Call accepted - connecting...');
-            CONFIG.isInCall = true;
-    UIManager.updateCallButtons();
+        
         if (CONFIG.isInitiator) {
             // We are the caller, now we can send the offer
             console.log('We are the caller, sending offer now...');
@@ -214,15 +187,15 @@ async function answerCall() {
     },
     
     handleCallRejected(data) {
-        console.log('Call rejected by:', data.from);
+        console.log('Call rejected by:', data.rejecterName);
         this.cleanupCall();
-        UIManager.showStatus('Call rejected by ' + (data.from || 'user'));
+        UIManager.showStatus('Call rejected by ' + (data.rejecterName || 'user'));
     },
     
     handleCallEnded(data) {
-        console.log('Call ended by remote:', data.from || 'remote user');
+        console.log('Call ended by remote:', data.endedByName || 'remote user');
         this.cleanupCall();
-        UIManager.showStatus('Call ended by ' + (data.from || 'remote user'));
+        UIManager.showStatus('Call ended by ' + (data.endedByName || 'remote user'));
     },
     
     hangup() {
@@ -230,11 +203,9 @@ async function answerCall() {
         UIManager.showStatus('Ending call...');
         
         if (CONFIG.targetSocketId) {
-            // FIXED: Use to/from fields
             WebSocketClient.sendToServer({
                 type: 'call-end',
-                to: CONFIG.targetSocketId,
-                from: CONFIG.myId
+                targetSocketId: CONFIG.targetSocketId
             });
         }
         
@@ -269,9 +240,6 @@ async function answerCall() {
         
         UIManager.showStatus('Ready');
         UIManager.updateCallButtons();
-        
-        // Reset cooldown
-        this.lastCallTime = 0;
     }
 };
 
