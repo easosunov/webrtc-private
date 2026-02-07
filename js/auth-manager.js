@@ -1,21 +1,21 @@
-// js/auth-manager.js
+// js/auth-manager.js - MODIFIED for single access code
 const AuthManager = {
     async login() {
-        const username = CONFIG.elements.usernameInput.value.trim();
-        const password = CONFIG.elements.passwordInput.value;
+        // CHANGED: Single access code instead of username+password
+        const accessCode = CONFIG.elements.accessCodeInput.value.trim();
         
-        if (!username || !password) {
-            UIManager.showError('Enter username and password');
+        if (!accessCode) {
+            UIManager.showError('Enter your access code');
             return;
         }
         
-        console.log('Login attempt:', username);
+        console.log('Login attempt with access code:', accessCode);
         UIManager.showStatus('Logging in...');
         
+        // CHANGED: Send access code instead of username+password
         WebSocketClient.sendToServer({
             type: 'login',
-            username: username,
-            password: password
+            accessCode: accessCode
         });
     },
     
