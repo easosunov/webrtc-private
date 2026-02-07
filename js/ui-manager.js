@@ -163,7 +163,7 @@ const UIManager = {
         }
     },
     
-    // NEW: Change video resolution - FIXED VERSION
+    // NEW: Change video resolution - COMPLETELY REWRITTEN VERSION
     async changeVideoResolution() {
         if (!CONFIG.elements.resolutionSelect) return;
         
@@ -266,44 +266,13 @@ const UIManager = {
                 CONFIG.elements.localVideo.muted = true;
             }
             
-            // If in a call, replace tracks in peer connection
+            // If in a call, handle track replacement
             if (CONFIG.isInCall && CONFIG.peerConnection) {
-                console.log('Active call detected, replacing tracks...');
-                
-                // Get current senders
-                const senders = CONFIG.peerConnection.getSenders();
-                console.log('Current senders:', senders.map(s => s.track?.kind));
-                
-                // For each track in new stream
-                newStream.getTracks().forEach(track => {
-                    const sender = senders.find(s => s.track && s.track.kind === track.kind);
-                    if (sender) {
-                        console.log(`Replacing ${track.kind} track`);
-                        sender.replaceTrack(track);
-                    } else {
-                        // Add new track if not present
-                        console.log(`Adding new ${track.kind} track`);
-                        CONFIG.peerConnection.addTrack(track, newStream);
-                    }
-                });
-                
-                // Handle audio-only mode
-                if (!videoEnabled) {
-                    const videoSender = senders.find(s => s.track && s.track.kind === 'video');
-                    if (videoSender) {
-                        console.log('Removing video track for audio-only mode');
-                        videoSender.replaceTrack(null);
-                    }
-                }
-                
-                console.log(`✅ Resolution changed to: ${resolution} during active call`);
-                this.showStatus(`Quality changed to: ${this.getResolutionName(resolution)}`);
-                
-            } else {
-                // Not in a call, just update local preview
-                console.log(`✅ Resolution settings updated to: ${resolution}`);
-                this.showStatus(`Quality set to: ${this.getResolutionName(resolution)}`);
+                await this.replaceMediaTracksInCall(newStream, videoEnabled);
             }
+            
+            console.log(`✅ Resolution changed to: ${resolution}`);
+            this.showStatus(`Quality changed to: ${this.getResolutionName(resolution)}`);
             
         } catch (error) {
             console.error('Error changing resolution:', error);
@@ -314,6 +283,66 @@ const UIManager = {
                 CONFIG.elements.resolutionSelect.value = CONFIG.currentResolution || 'medium';
             }
         }
+    },
+    
+    // NEW: Helper method to replace media tracks in an active call
+    async replaceMediaTracksInCall(newStream, videoEnabled) {
+        console.log('Active call detected, replacing tracks...');
+        
+        // Get current senders and clean up any undefined/null senders
+        const senders = CONFIG.peerConnection.getSenders();
+        console.log('Current senders before cleanup:', senders.map(s => s.track?.kind));
+        
+        // First, clean up any null/undefined senders
+        const validSenders = senders.filter(sender => sender && sender.track !== undefined);
+        
+        // Handle audio track replacement
+        const newAudioTrack = newStream.getAudioTracks()[0];
+        const audioSender = validSenders.find(s => s.track && s.track.kind === 'audio');
+        
+        if (newAudioTrack) {
+            if (audioSender) {
+                console.log('Replacing audio track');
+                await audioSender.replaceTrack(newAudioTrack);
+            } else {
+                console.log('Adding audio track');
+                CONFIG.peerConnection.addTrack(newAudioTrack, newStream);
+            }
+        } else if (audioSender) {
+            console.log('No audio track in new stream, removing audio sender');
+            audioSender.replaceTrack(null);
+        }
+        
+        // Handle video track replacement
+        const newVideoTrack = newStream.getVideoTracks()[0];
+        const videoSenders = validSenders.filter(s => s.track && s.track.kind === 'video');
+        
+        if (videoEnabled && newVideoTrack) {
+            // If we have video and want to send it
+            if (videoSenders.length > 0) {
+                // Use the first video sender
+                console.log('Replacing video track');
+                await videoSenders[0].replaceTrack(newVideoTrack);
+                
+                // Remove any extra video senders
+                for (let i = 1; i < videoSenders.length; i++) {
+                    console.log('Removing extra video sender');
+                    videoSenders[i].replaceTrack(null);
+                }
+            } else {
+                // No video sender exists, add one
+                console.log('Adding new video track');
+                CONFIG.peerConnection.addTrack(newVideoTrack, newStream);
+            }
+        } else {
+            // Video disabled or no video track - remove all video senders
+            videoSenders.forEach(videoSender => {
+                console.log('Removing video track');
+                videoSender.replaceTrack(null);
+            });
+        }
+        
+        console.log('Tracks replaced successfully');
     },
     
     // NEW: Helper to get resolution display name
