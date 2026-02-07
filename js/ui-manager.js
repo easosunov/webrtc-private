@@ -30,45 +30,32 @@ const UIManager = {
         alert('Error: ' + message);
     },
     
-updateUsersList(users) {
-    // Only admin should see user list
-    if (!CONFIG.isAdmin) return;
-    
-    // If userList element doesn't exist yet, create it or wait
-    if (!CONFIG.elements.userList) {
-        console.warn('userList element not found, attempting to find it');
-        // Try to find the element again
-        CONFIG.elements.userList = document.getElementById('userList');
-        if (!CONFIG.elements.userList) {
-            console.warn('Still cannot find userList element, will retry in 100ms');
-            setTimeout(() => this.updateUsersList(users), 100);
+    updateUsersList(users) {
+        if (!CONFIG.isAdmin || !CONFIG.elements.userList) return;
+        
+        const userList = CONFIG.elements.userList;
+        userList.innerHTML = '';
+        
+        if (!users || users.length === 0) {
+            userList.innerHTML = '<div class="user-line"><span class="username">No users online</span></div>';
             return;
         }
-    }
-    
-    const userList = CONFIG.elements.userList;
-    userList.innerHTML = '';
-    
-    if (!users || users.length === 0) {
-        userList.innerHTML = '<div class="user-line"><span class="username">No users online</span></div>';
-        return;
-    }
-    
-    users.forEach(user => {
-        if (user.id === CONFIG.myId) return;
         
-        const div = document.createElement('div');
-        div.className = 'user-line';
-        div.innerHTML = `
-            <span class="username">${user.username} ${user.isAdmin ? '(Admin)' : ''}</span>
-            <button class="btn-call" onclick="callUser('${user.username}', '${user.socketId}')">Call</button>
-            <button class="btn-hangup" onclick="hangup()" disabled>Hang Up</button>
-        `;
-        userList.appendChild(div);
-    });
-    
-    this.updateCallButtons();
-}
+        users.forEach(user => {
+            if (user.id === CONFIG.myId) return;
+            
+            const div = document.createElement('div');
+            div.className = 'user-line';
+            div.innerHTML = `
+                <span class="username">${user.username} ${user.isAdmin ? '(Admin)' : ''}</span>
+                <button class="btn-call" onclick="callUser('${user.username}', '${user.socketId}')">Call</button>
+                <button class="btn-hangup" onclick="hangup()" disabled>Hang Up</button>
+            `;
+            userList.appendChild(div);
+        });
+        
+        this.updateCallButtons();
+    },
     
     updateCallButtons() {
         // For user view
