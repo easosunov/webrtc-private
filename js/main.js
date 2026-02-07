@@ -360,6 +360,50 @@ document.addEventListener('click', function() {
     }
 });
 
+
+let userInteracted = false;
+
+// Global click handler for autoplay
+document.addEventListener('click', function() {
+    userInteracted = true;
+    
+    if (CONFIG.elements.remoteVideo && CONFIG.elements.remoteVideo.srcObject) {
+        console.log('User clicked, attempting to play remote video...');
+        
+        const playPromise = CONFIG.elements.remoteVideo.play();
+        
+        if (playPromise !== undefined) {
+            playPromise
+                .then(() => {
+                    console.log('✅ Remote video playing after user click');
+                    UIManager.showStatus('Call active');
+                })
+                .catch(error => {
+                    console.log('❌ Still blocked after click:', error);
+                    // Show instruction to user
+                    UIManager.showError('Click the play button in video controls');
+                });
+        }
+    }
+});
+
+// Also try to play when tracks arrive if user already interacted
+CONFIG.peerConnection.ontrack = (event) => {
+    // ... existing code ...
+    
+    if (CONFIG.elements.remoteVideo) {
+        CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
+        CONFIG.elements.remoteVideo.muted = false;
+        
+        // Try play immediately if user already clicked somewhere
+        if (userInteracted) {
+            CONFIG.elements.remoteVideo.play()
+                .then(() => console.log('✅ Auto-playing after user interaction'))
+                .catch(e => console.log('Auto-play failed:', e));
+        }
+    }
+};
+
 // Export for testing (if needed)
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
