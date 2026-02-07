@@ -33,12 +33,12 @@ const CallManager = {
         WebRTCManager.createPeerConnection();
         
         // Send call initiation
-        WebSocketClient.sendToServer({
-            type: 'call-initiate',
-            targetSocketId: socketToCall,
-            callerId: CONFIG.myId,
-            callerName: CONFIG.myUsername
-        });
+		WebSocketClient.sendToServer({
+			type: 'call-initiate',
+			to: userToCall,  // Changed from targetSocketId
+			from: CONFIG.myId,  // Added from field
+			fromSocketId: CONFIG.myId  // Added fromSocketId
+		});
         
         console.log('Waiting for user to accept call...');
     },
@@ -132,12 +132,11 @@ const CallManager = {
         }
         
         // Send acceptance
-        WebSocketClient.sendToServer({
-            type: 'call-accept',
-            targetSocketId: CONFIG.targetSocketId,
-            calleeId: CONFIG.myId,
-            calleeName: CONFIG.myUsername
-        });
+		WebSocketClient.sendToServer({
+			type: 'call-accept',
+			to: CONFIG.targetSocketId,  // Changed from targetSocketId
+			from: CONFIG.myId  // Added from field
+		});
         
         // Create peer connection
         WebRTCManager.createPeerConnection();
