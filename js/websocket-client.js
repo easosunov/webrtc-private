@@ -70,7 +70,14 @@ const WebSocketClient = {
                 console.log('✅ Admin online:', CONFIG.adminSocketId);
                 UIManager.showStatus('Admin online - ready to call');
                 break;
-                
+				
+            case 'admin-offline':
+				CONFIG.adminSocketId = null;  // This line is the key fix
+				console.log('❌ Admin offline');
+				UIManager.showStatus('Admin offline');
+				UIManager.updateCallButtons();
+				break;   
+				
             case 'call-initiated':
                 CallManager.handleCallInitiated(data);
                 break;
