@@ -1,8 +1,9 @@
-// js/auth-manager.js - MODIFIED for single access code
+// js/auth-manager.js - MODIFIED for phone keypad
 const AuthManager = {
     async login() {
-        // CHANGED: Single access code instead of username+password
-        const accessCode = CONFIG.elements.accessCodeInput.value.trim();
+        // Get access code from hidden input (phone keypad sets this)
+        const accessCode = CONFIG.elements.accessCodeInput ? 
+            CONFIG.elements.accessCodeInput.value.trim() : '';
         
         if (!accessCode) {
             UIManager.showError('Enter your access code');
@@ -12,7 +13,6 @@ const AuthManager = {
         console.log('Login attempt with access code:', accessCode);
         UIManager.showStatus('Logging in...');
         
-        // CHANGED: Send access code instead of username+password
         WebSocketClient.sendToServer({
             type: 'login',
             accessCode: accessCode
@@ -63,6 +63,11 @@ const AuthManager = {
         CONFIG.adminSocketId = null;
         CONFIG.connectedUsers = [];
         CONFIG.hasMediaPermissions = false;
+        
+        // Clear the access code display
+        if (typeof clearCode === 'function') {
+            clearCode();
+        }
         
         UIManager.showStatus('Logged out');
     },
