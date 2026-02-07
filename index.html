@@ -2,6 +2,8 @@
 <html>
 <head>
     <title>Private WebRTC Communicator</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
     <!-- Modular JavaScript files -->
     <script src="./js/config.js"></script>
     <script src="./js/ui-manager.js"></script>
@@ -12,34 +14,207 @@
     <script src="./js/main.js"></script>
     
  <style>
-    body { font-family: Arial, sans-serif; max-width: 800px; margin: 20px auto; }
-    video { width: 300px; border: 1px solid #ccc; margin: 10px; }
-    #login { margin: 20px; padding: 20px; border: 1px solid #ddd; }
+    * {
+        box-sizing: border-box;
+    }
+    
+    body { 
+        font-family: Arial, sans-serif; 
+        max-width: 800px; 
+        margin: 0 auto; 
+        padding: 20px;
+        background: #f5f5f5;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    video { 
+        width: 300px; 
+        border: 1px solid #ccc; 
+        margin: 10px; 
+        background: #000;
+    }
+    
+    #login { 
+        margin: 20px auto; 
+        padding: 30px 20px; 
+        border: 1px solid #ddd; 
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        max-width: 400px;
+        width: 100%;
+    }
+    
     #call { 
         display: none; /* Controlled by CSS, overridden by JS */
     }
     
+    /* Phone Keypad Styles */
+    .keypad-container {
+        width: 100%;
+        max-width: 400px;
+        margin: 0 auto;
+    }
+    
+    .code-display {
+        margin: 20px 0;
+        text-align: center;
+    }
+    
+    #accessCodeDisplay {
+        font-size: 2.5rem;
+        font-weight: bold;
+        letter-spacing: 5px;
+        color: #333;
+        min-height: 60px;
+        line-height: 60px;
+        background: #f8f9fa;
+        border-radius: 10px;
+        border: 2px solid #ddd;
+        margin-bottom: 10px;
+        font-family: monospace;
+    }
+    
+    .clear-btn {
+        background: #ff6b6b;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-size: 1rem;
+        cursor: pointer;
+        margin: 0 5px;
+    }
+    
+    .clear-btn:hover {
+        background: #ff5252;
+    }
+    
+    .keypad {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 15px;
+        margin-top: 20px;
+    }
+    
+    .keypad-btn {
+        aspect-ratio: 1;
+        border: none;
+        border-radius: 50%;
+        font-size: 2rem;
+        font-weight: bold;
+        background: linear-gradient(145deg, #ffffff, #e6e6e6);
+        box-shadow: 5px 5px 10px #d9d9d9, -5px -5px 10px #ffffff;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #333;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+    
+    .keypad-btn:active {
+        transform: scale(0.95);
+        box-shadow: 2px 2px 5px #d9d9d9, -2px -2px 5px #ffffff;
+    }
+    
+    .keypad-btn.enter-btn {
+        background: linear-gradient(145deg, #4CAF50, #45a049);
+        color: white;
+        grid-column: span 3;
+        border-radius: 25px;
+        aspect-ratio: auto;
+        height: 70px;
+        font-size: 1.5rem;
+    }
+    
+    .keypad-btn.plus-btn {
+        background: linear-gradient(145deg, #2196F3, #1976D2);
+        color: white;
+    }
+    
+    .keypad-btn:hover {
+        opacity: 0.9;
+    }
+    
+    .keypad-btn .sub-label {
+        font-size: 0.7rem;
+        font-weight: normal;
+        margin-top: 2px;
+        opacity: 0.7;
+    }
+    
+    .keypad-btn.plus-btn .sub-label,
+    .keypad-btn.enter-btn .sub-label {
+        color: rgba(255,255,255,0.8);
+    }
+    
+    /* Hidden input for keyboard support */
+    #hiddenAccessCode {
+        position: absolute;
+        opacity: 0;
+        height: 0;
+        width: 0;
+        border: none;
+        padding: 0;
+    }
+    
+    /* Instructions */
+    .instructions {
+        text-align: center;
+        margin: 20px 0;
+        color: #666;
+        font-size: 0.9rem;
+    }
+    
+    /* Status */
+    #status {
+        padding: 15px;
+        margin: 20px 0;
+        background: #f5f5f5;
+        border-radius: 10px;
+        min-height: 20px;
+        text-align: center;
+        font-size: 1rem;
+        color: #333;
+    }
+    
+    /* Call screen styles (unchanged) */
     .user-line {
         padding: 10px;
         margin: 5px 0;
         border: 1px solid #ddd;
         display: flex;
         align-items: center;
+        background: white;
+        border-radius: 8px;
     }
+    
     .username {
         flex-grow: 1;
         font-weight: bold;
     }
-    button {
+    
+    button:not(.keypad-btn):not(.clear-btn) {
         margin: 0 5px;
         padding: 8px 15px;
         cursor: pointer;
         border: 1px solid #ccc;
+        border-radius: 5px;
+        background: #4CAF50;
+        color: white;
     }
-    button:disabled {
+    
+    button:disabled:not(.keypad-btn):not(.clear-btn) {
         background: #ccc !important;
         cursor: not-allowed;
     }
+    
     .btn-call { background: #4CAF50; color: white; }
     .btn-hangup { background: #ccc; }
     .btn-call.active { background: #4CAF50; }
@@ -48,28 +223,121 @@
     #userView, #adminView {
         margin: 20px 0;
     }
+    
     h3 {
         border-bottom: 2px solid #4CAF50;
         padding-bottom: 5px;
+        margin-bottom: 15px;
     }
     
-    /* Status display */
-    #status {
-        padding: 10px;
-        margin: 10px 0;
-        background: #f5f5f5;
-        border-radius: 5px;
-        min-height: 20px;
+    @media (max-width: 600px) {
+        .keypad-btn {
+            font-size: 1.8rem;
+        }
+        
+        #accessCodeDisplay {
+            font-size: 2rem;
+            min-height: 50px;
+            line-height: 50px;
+        }
+        
+        .keypad {
+            gap: 10px;
+        }
+        
+        video {
+            width: 100%;
+            max-width: 300px;
+        }
+    }
+    
+    @media (max-width: 400px) {
+        .keypad-btn {
+            font-size: 1.5rem;
+        }
+        
+        #accessCodeDisplay {
+            font-size: 1.8rem;
+        }
     }
 </style>
 	
 </head>
 <body>
     <div id="login">
-        <h2>Private WebRTC Communicator</h2>
-        <!-- CHANGED: Single access code field instead of username+password -->
-        <input id="accessCode" placeholder="Enter your access code" value="a">
-        <button onclick="login()">Login</button>
+        <h2 style="text-align: center; margin-bottom: 30px;">Private WebRTC Communicator</h2>
+        
+        <!-- Hidden input for keyboard support -->
+        <input type="text" id="hiddenAccessCode" inputmode="numeric" pattern="[0-9+]*" autocomplete="off">
+        
+        <!-- Code display -->
+        <div class="code-display">
+            <div id="accessCodeDisplay">Enter Code</div>
+            <div>
+                <button class="clear-btn" onclick="clearCode()">Clear</button>
+                <button class="clear-btn" onclick="backspaceCode()">⌫</button>
+            </div>
+        </div>
+        
+        <!-- Phone Keypad -->
+        <div class="keypad-container">
+            <div class="keypad">
+                <!-- Row 1 -->
+                <button class="keypad-btn plus-btn" onclick="addToCode('+')">
+                    +<div class="sub-label">Plus</div>
+                </button>
+                <button class="keypad-btn" onclick="addToCode('1')">
+                    1<div class="sub-label"></div>
+                </button>
+                <button class="keypad-btn" onclick="addToCode('2')">
+                    2<div class="sub-label">ABC</div>
+                </button>
+                
+                <!-- Row 2 -->
+                <button class="keypad-btn" onclick="addToCode('3')">
+                    3<div class="sub-label">DEF</div>
+                </button>
+                <button class="keypad-btn" onclick="addToCode('4')">
+                    4<div class="sub-label">GHI</div>
+                </button>
+                <button class="keypad-btn" onclick="addToCode('5')">
+                    5<div class="sub-label">JKL</div>
+                </button>
+                
+                <!-- Row 3 -->
+                <button class="keypad-btn" onclick="addToCode('6')">
+                    6<div class="sub-label">MNO</div>
+                </button>
+                <button class="keypad-btn" onclick="addToCode('7')">
+                    7<div class="sub-label">PQRS</div>
+                </button>
+                <button class="keypad-btn" onclick="addToCode('8')">
+                    8<div class="sub-label">TUV</div>
+                </button>
+                
+                <!-- Row 4 -->
+                <button class="keypad-btn" onclick="addToCode('9')">
+                    9<div class="sub-label">WXYZ</div>
+                </button>
+                <button class="keypad-btn" onclick="addToCode('0')">
+                    0<div class="sub-label">+</div>
+                </button>
+                <button class="keypad-btn" onclick="addToCode('#')">
+                    #<div class="sub-label"></div>
+                </button>
+                
+                <!-- Enter button -->
+                <button class="keypad-btn enter-btn" onclick="submitCode()">
+                    ENTER<div class="sub-label">Login</div>
+                </button>
+            </div>
+        </div>
+        
+        <div class="instructions">
+            <p>Enter your access code and press ENTER</p>
+            <p>Or use keyboard: Type numbers and press Enter</p>
+        </div>
+        
         <div id="status">Ready to login...</div>
     </div>
     
@@ -113,6 +381,125 @@
         <source src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==" type="audio/wav">
     </audio>
     
-    <!-- NO webrtc-client.js here - using modular files -->
+    <script>
+        // Keypad functionality
+        let accessCode = '';
+        
+        function addToCode(char) {
+            accessCode += char;
+            updateDisplay();
+            // Also update hidden input for keyboard compatibility
+            document.getElementById('hiddenAccessCode').value = accessCode;
+        }
+        
+        function clearCode() {
+            accessCode = '';
+            updateDisplay();
+            document.getElementById('hiddenAccessCode').value = '';
+            document.getElementById('hiddenAccessCode').focus();
+        }
+        
+        function backspaceCode() {
+            accessCode = accessCode.slice(0, -1);
+            updateDisplay();
+            document.getElementById('hiddenAccessCode').value = accessCode;
+        }
+        
+        function updateDisplay() {
+            const display = document.getElementById('accessCodeDisplay');
+            if (accessCode === '') {
+                display.textContent = 'Enter Code';
+                display.style.color = '#999';
+            } else {
+                // Show as dots for security (optional) or show actual numbers
+                // For simplicity, showing actual numbers:
+                display.textContent = accessCode;
+                display.style.color = '#333';
+            }
+        }
+        
+        function submitCode() {
+            if (accessCode.trim() === '') {
+                UIManager.showError('Please enter an access code');
+                return;
+            }
+            
+            // Set the access code in the UI manager
+            if (CONFIG.elements && CONFIG.elements.accessCodeInput) {
+                CONFIG.elements.accessCodeInput.value = accessCode;
+            }
+            
+            // Call the login function
+            AuthManager.login();
+        }
+        
+        // Keyboard support
+        document.addEventListener('DOMContentLoaded', function() {
+            const hiddenInput = document.getElementById('hiddenAccessCode');
+            
+            // Focus hidden input when clicking display
+            document.getElementById('accessCodeDisplay').addEventListener('click', function() {
+                hiddenInput.focus();
+            });
+            
+            // Handle keyboard input
+            hiddenInput.addEventListener('input', function(e) {
+                accessCode = this.value;
+                updateDisplay();
+            });
+            
+            // Handle key presses
+            hiddenInput.addEventListener('keydown', function(e) {
+                // Allow only numbers, +, # and control keys
+                if (!/[0-9+#]/.test(e.key) && 
+                    !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'].includes(e.key)) {
+                    e.preventDefault();
+                }
+                
+                // Submit on Enter
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitCode();
+                }
+                
+                // Clear on Escape
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    clearCode();
+                }
+            });
+            
+            // Also allow direct key presses on the page
+            document.addEventListener('keydown', function(e) {
+                // If not focused in another input
+                if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                    // Number keys
+                    if (/[0-9+#]/.test(e.key)) {
+                        e.preventDefault();
+                        addToCode(e.key);
+                    }
+                    // Enter to submit
+                    else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        submitCode();
+                    }
+                    // Backspace to delete
+                    else if (e.key === 'Backspace') {
+                        e.preventDefault();
+                        backspaceCode();
+                    }
+                    // Escape to clear
+                    else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        clearCode();
+                    }
+                }
+            });
+            
+            // Initialize display
+            updateDisplay();
+            hiddenInput.focus();
+        });
+    </script>
 </body>
 </html>
