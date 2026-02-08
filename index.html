@@ -304,6 +304,14 @@
         margin-bottom: 15px;
     }
     
+    /* Shortcut hints */
+    .shortcut-hint {
+        font-size: 0.7rem;
+        color: #666;
+        margin-left: 5px;
+        font-style: italic;
+    }
+    
     @media (max-width: 768px) {
         #localVideo {
             width: 100px !important;
@@ -324,6 +332,13 @@
             font-size: 2rem;
             min-height: 50px;
             line-height: 50px;
+        }
+        
+        .shortcut-hint {
+            font-size: 0.6rem;
+            display: block;
+            margin-left: 0;
+            margin-top: 2px;
         }
     }
     
@@ -441,7 +456,7 @@
                 <span class="username">Administrator</span>
                 <!-- Call and Hang Up buttons only -->
                 <button class="btn-call" onclick="callAdmin()">Call</button>
-                <button class="btn-hangup" onclick="hangup()" disabled>Hang Up</button>
+                <button class="btn-hangup" onclick="hangup()" disabled>Hang Up<span class="shortcut-hint">(Esc)</span></button>
             </div>
         </div>
         
@@ -468,7 +483,7 @@
         <!-- Logout button will be below resolution controls -->
         
         <div style="margin-top: 20px;">
-            <button onclick="logout()" style="background: #ff4444; color: white;">Logout</button>
+            <button onclick="logout()" style="background: #ff4444; color: white;">Logout<span class="shortcut-hint">(Alt+Esc)</span></button>
             <!-- Hidden Debug button -->
             <button onclick="debug()" class="hidden-button">Debug</button>
         </div>
@@ -476,7 +491,7 @@
     
     <!-- Hidden ringtone -->
     <audio id="ringtone" loop preload="auto">
-        <source src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==" type="audio/wav">
+        <source src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZ3620YQQAAAAAAA==" type="audio/wav">
     </audio>
     
     <script>
@@ -688,6 +703,57 @@
             localVideo.style.right = '20px';
         }
         
+        // Global keyboard shortcut handler
+        function handleGlobalShortcuts(e) {
+            // Only process if we're not in an input/textarea
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                return;
+            }
+            
+            // ESC key for hangup (only when in call)
+            if (e.key === 'Escape' && !e.altKey) {
+                // Check if hangup button is enabled (in call)
+                const hangupBtn = document.querySelector('.btn-hangup.active');
+                if (hangupBtn && !hangupBtn.disabled) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // Visual feedback
+                    hangupBtn.classList.add('key-active');
+                    setTimeout(() => {
+                        hangupBtn.classList.remove('key-active');
+                    }, 150);
+                    
+                    // Execute hangup
+                    hangup();
+                    return;
+                }
+            }
+            
+            // Alt+Esc for logout (always available when logged in)
+            if (e.key === 'Escape' && e.altKey) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Check if we're on the call screen (logged in)
+                const callDiv = document.getElementById('call');
+                if (callDiv && callDiv.style.display !== 'none') {
+                    // Visual feedback
+                    const logoutBtn = document.querySelector('button[onclick="logout()"]');
+                    if (logoutBtn) {
+                        logoutBtn.classList.add('key-active');
+                        setTimeout(() => {
+                            logoutBtn.classList.remove('key-active');
+                        }, 150);
+                    }
+                    
+                    // Execute logout
+                    logout();
+                    return;
+                }
+            }
+        }
+        
         // Initialize everything when page loads
         document.addEventListener('DOMContentLoaded', function() {
             const hiddenInput = document.getElementById('hiddenAccessCode');
@@ -757,11 +823,20 @@
                         e.preventDefault();
                         backspaceCode();
                     } else if (e.key === 'Escape') {
-                        e.preventDefault();
-                        clearCode();
+                        // Don't handle Escape here - let the global handler handle it
+                        // This prevents conflict with the login screen Escape for clearCode()
+                        if (document.getElementById('call').style.display === 'none') {
+                            // We're on login screen, so use Escape for clear
+                            e.preventDefault();
+                            clearCode();
+                        }
+                        // If we're on call screen, let handleGlobalShortcuts handle it
                     }
                 }
             });
+            
+            // Add global shortcut handler for call screen shortcuts
+            document.addEventListener('keydown', handleGlobalShortcuts);
             
             // Initialize
             updateDisplay();
