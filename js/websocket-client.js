@@ -116,10 +116,24 @@ const WebSocketClient = {
                     break;
                     
                 case 'call-rejected':
+                    // ADDED: Clean status before processing
+                    if (typeof stopMonitoring !== 'undefined') {
+                        stopMonitoring();
+                    }
+                    if (typeof hideConnectionStatus !== 'undefined') {
+                        hideConnectionStatus();
+                    }
                     CallManager.handleCallRejected(message);
                     break;
                     
                 case 'call-ended':
+                    // ADDED: Clean status before processing
+                    if (typeof stopMonitoring !== 'undefined') {
+                        stopMonitoring();
+                    }
+                    if (typeof hideConnectionStatus !== 'undefined') {
+                        hideConnectionStatus();
+                    }
                     CallManager.handleCallEnded(message);
                     break;
                     
