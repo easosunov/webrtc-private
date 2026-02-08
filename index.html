@@ -407,6 +407,28 @@
         color: #222222; /* Darker black */
     }
     
+    /* User selector dropdown styles (NEW) */
+    .user-selector {
+        margin: 10px 0;
+    }
+    
+    .user-dropdown {
+        width: 100%;
+        padding: 8px 12px;
+        font-size: 14px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: white;
+        cursor: pointer;
+        margin-bottom: 10px;
+    }
+    
+    .user-dropdown:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        background: #f5f5f5;
+    }
+    
     @media (max-width: 768px) {
         #localVideo {
             width: 100px !important;
@@ -572,11 +594,27 @@
             </div>
         </div>
         
-        <!-- Administrator View -->
+        <!-- Administrator View - MODIFIED -->
         <div id="adminView">
-            <h3>Online Users</h3>
-            <div id="userList">
-                <!-- Will be filled by JavaScript -->
+            <h3>Call User</h3>
+            
+            <!-- User selector dropdown (like resolution control) -->
+            <div class="user-selector">
+                <select id="userDropdown" class="user-dropdown">
+                    <option value="">-- Select a user to call --</option>
+                    <!-- Users will be populated by JavaScript -->
+                </select>
+            </div>
+            
+            <!-- Selected user info -->
+            <div id="selectedUserDisplay" style="display: none; margin: 10px 0; padding: 8px; background: #f0f0f0; border-radius: 4px;">
+                <p>Selected: <strong id="selectedUserName"></strong></p>
+            </div>
+            
+            <!-- Admin call controls -->
+            <div style="margin: 10px 0;">
+                <button id="adminCallBtn" onclick="callSelectedUser()" disabled>Call</button>
+                <button id="adminHangupBtn" onclick="hangup()" disabled>Hang Up<span class="shortcut-hint">(Esc)</span></button>
             </div>
         </div>
         
@@ -912,6 +950,120 @@
             console.log('Debug info:', { accessCode: accessCode });
         }
         
+        // ==== NEW: Admin function to call selected user ====
+        function callSelectedUser() {
+            const dropdown = document.getElementById('userDropdown');
+            if (!dropdown || !dropdown.value) {
+                UIManager.showError('Please select a user first');
+                return;
+            }
+            
+            const selectedOption = dropdown.options[dropdown.selectedIndex];
+            const userToCall = selectedOption.text;
+            const socketToCall = dropdown.value;
+            
+            console.log('Admin calling selected user:', userToCall, socketToCall);
+            
+            // Show connecting status
+            showConnectionStatus('Connecting...', 'connecting');
+            monitorCallConnection();
+            
+            // Use existing CallManager function
+            if (window.CallManager && CallManager.callUser) {
+                CallManager.callUser(userToCall, socketToCall);
+            }
+        }
+        
+        // ==== NEW: Update admin dropdown when user list changes ====
+        function updateAdminDropdown(users) {
+            if (!CONFIG.isAdmin) return;
+            
+            const dropdown = document.getElementById('userDropdown');
+            const selectedUserDisplay = document.getElementById('selectedUserDisplay');
+            const selectedUserName = document.getElementById('selectedUserName');
+            const adminCallBtn = document.getElementById('adminCallBtn');
+            const adminHangupBtn = document.getElementById('adminHangupBtn');
+            
+            if (!dropdown) return;
+            
+            // Store current selection
+            const currentSelection = dropdown.value;
+            
+            // Clear existing options except the first one
+            while (dropdown.options.length > 1) {
+                dropdown.remove(1);
+            }
+            
+            // Add users to dropdown
+            if (users && users.length > 0) {
+                users.forEach(user => {
+                    if (user.username !== CONFIG.myUsername && !user.inCall) {
+                        const option = document.createElement('option');
+                        option.value = user.socketId;
+                        option.text = user.displayName || user.username;
+                        option.dataset.username = user.username;
+                        dropdown.appendChild(option);
+                    }
+                });
+                
+                // Restore previous selection if still available
+                if (currentSelection) {
+                    const optionExists = Array.from(dropdown.options).some(opt => opt.value === currentSelection);
+                    if (optionExists) {
+                        dropdown.value = currentSelection;
+                        updateSelectedUserDisplay();
+                    }
+                }
+                
+                dropdown.disabled = false;
+            } else {
+                dropdown.disabled = true;
+                selectedUserDisplay.style.display = 'none';
+            }
+            
+            // Update admin button states
+            updateAdminButtonStates();
+        }
+        
+        // ==== NEW: Update selected user display ====
+        function updateSelectedUserDisplay() {
+            const dropdown = document.getElementById('userDropdown');
+            const selectedUserDisplay = document.getElementById('selectedUserDisplay');
+            const selectedUserName = document.getElementById('selectedUserName');
+            
+            if (!dropdown || !dropdown.value) {
+                selectedUserDisplay.style.display = 'none';
+                return;
+            }
+            
+            const selectedOption = dropdown.options[dropdown.selectedIndex];
+            selectedUserName.textContent = selectedOption.text;
+            selectedUserDisplay.style.display = 'block';
+        }
+        
+        // ==== NEW: Update admin button states ====
+        function updateAdminButtonStates() {
+            const dropdown = document.getElementById('userDropdown');
+            const adminCallBtn = document.getElementById('adminCallBtn');
+            const adminHangupBtn = document.getElementById('adminHangupBtn');
+            
+            if (!adminCallBtn || !adminHangupBtn) return;
+            
+            const hasSelectedUser = dropdown && dropdown.value && !CONFIG.isInCall;
+            
+            adminCallBtn.disabled = !hasSelectedUser;
+            adminCallBtn.className = hasSelectedUser ? 'btn-call active' : 'btn-call';
+            
+            adminHangupBtn.disabled = !CONFIG.isInCall;
+            adminHangupBtn.className = CONFIG.isInCall ? 'btn-hangup active' : 'btn-hangup';
+        }
+        
+        // ==== NEW: Handle dropdown change ====
+        function handleUserDropdownChange() {
+            updateSelectedUserDisplay();
+            updateAdminButtonStates();
+        }
+        
         // Simple draggable video - NO changes to existing login code
         function initDraggableVideo() {
             const localVideo = document.getElementById('localVideo');
@@ -1149,6 +1301,12 @@
             
             // Add global shortcut handler for call screen shortcuts
             document.addEventListener('keydown', handleGlobalShortcuts);
+            
+            // Set up admin dropdown event listener
+            const userDropdown = document.getElementById('userDropdown');
+            if (userDropdown) {
+                userDropdown.addEventListener('change', handleUserDropdownChange);
+            }
             
             // Initialize
             updateDisplay();
