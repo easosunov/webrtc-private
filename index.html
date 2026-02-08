@@ -377,18 +377,18 @@
         font-style: italic;
     }
     
-    /* Connection status - FIXED TYPO IN COLOR VALUE */
+    /* Connection status - FIXED TYPO IN COLOR VALUE - REMOVED !important TO ALLOW OVERRIDE */
     .connection-status {
-        margin: 5px 0; /* Reduced margin */
-        padding: 8px 12px; /* Reduced padding */
+        margin: 5px 0;
+        padding: 8px 12px;
         background: #e3f2fd;
         border-radius: 5px;
         border-left: 4px solid #2196F3;
         font-weight: bold;
-        color: #1976D3; /* FIXED: Removed extra '2' */
+        color: #1976D3;
         text-align: center;
         display: none;
-        font-size: 0.9rem; /* Slightly smaller font */
+        font-size: 0.9rem;
     }
     
     .connection-status.connecting {
@@ -410,7 +410,7 @@
         }
         
         #remoteVideo {
-            height: calc(100vh - 220px) !important; /* Adjusted for reduced spacing */
+            height: calc(100vh - 220px) !important;
             object-fit: cover;
         }
         
@@ -552,7 +552,6 @@
             <div class="user-line" id="userLine-admin">
                 <span class="username">Administrator</span>
                 <!-- Call and Hang Up buttons only -->
-                <!-- CHANGED: onclick="callAdmin()" to onclick="startCall()" -->
                 <button class="btn-call" onclick="startCall()">Call</button>
                 <button class="btn-hangup" onclick="hangup()" disabled>Hang Up<span class="shortcut-hint">(Esc)</span></button>
             </div>
@@ -566,7 +565,7 @@
             </div>
         </div>
         
-        <div style="margin-top: 20px; padding-top: 10px;"> <!-- Reduced margins -->
+        <div style="margin-top: 20px; padding-top: 10px;">
             <!-- Connection status display -->
             <div id="connectionStatus" class="connection-status"></div>
             
@@ -588,11 +587,11 @@
             <button onclick="debug()" class="hidden-button">Debug</button>
         </div>
         
-        <!-- ADDED: Diagnostic test button -->
+        <!-- CHANGED: Ultimate Status Test button -->
         <div style="margin-top: 10px; text-align: center;">
-            <button onclick="testConnectionStatus()" 
-                    style="background: #2196F3; color: white; padding: 5px 10px; font-size: 12px;">
-                Test Connection Status
+            <button onclick="ultimateStatusTest()" 
+                    style="background: #9C27B0; color: white; padding: 8px 15px; font-size: 14px; font-weight: bold;">
+                🔥 Ultimate Status Test 🔥
             </button>
         </div>
     </div>
@@ -764,148 +763,216 @@
             }
         }
         
-        // ==== MODIFIED: Connection status management with diagnostics ====
+        // ==== AGGRESSIVE CONNECTION STATUS MANAGEMENT ====
         function showConnectionStatus(message, type = 'connecting') {
-            const statusEl = document.getElementById('connectionStatus');
-            if (statusEl) {
-                console.log('=== showConnectionStatus() called ===');
-                console.log('Message:', message);
-                console.log('Type:', type);
-                console.log('Browser:', navigator.userAgent);
-                console.log('Element exists:', !!statusEl);
-                console.log('Current display:', statusEl.style.display);
-                console.log('Current className:', statusEl.className);
-                
-                // Set content and class
-                statusEl.textContent = message;
-                statusEl.className = 'connection-status ' + type;
-                
-                // Multiple display methods for cross-browser compatibility
-                statusEl.style.display = 'block';
-                statusEl.style.visibility = 'visible';
-                statusEl.style.opacity = '1';
-                
-                // Force reflow (helps some browsers)
-                void statusEl.offsetWidth;
-                
-                // Check computed styles
-                const computed = window.getComputedStyle(statusEl);
-                console.log('Computed display:', computed.display);
-                console.log('Computed visibility:', computed.visibility);
-                console.log('Computed opacity:', computed.opacity);
-                console.log('Computed height:', computed.height);
-                
-                // Nuclear option if still hidden
-                if (computed.display === 'none' || computed.visibility === 'hidden') {
-                    console.warn('Element still hidden! Applying nuclear fix...');
-                    
-                    // Force inline styles with !important
-                    const bgColor = type === 'connecting' ? '#fff3e0' : '#e8f5e9';
-                    const borderColor = type === 'connecting' ? '#ff9800' : '#4CAF50';
-                    const textColor = type === 'connecting' ? '#ef6c00' : '#2e7d32';
-                    
-                    statusEl.setAttribute('style', 
-                        'display: block !important; ' +
-                        'visibility: visible !important; ' +
-                        'opacity: 1 !important; ' +
-                        'margin: 5px 0 !important; ' +
-                        'padding: 8px 12px !important; ' +
-                        'background: ' + bgColor + ' !important; ' +
-                        'border-left: 4px solid ' + borderColor + ' !important; ' +
-                        'border-radius: 5px !important; ' +
-                        'font-weight: bold !important; ' +
-                        'color: ' + textColor + ' !important; ' +
-                        'text-align: center !important;' +
-                        'font-size: 14px !important;'
-                    );
-                }
-                
-                console.log('=== showConnectionStatus() completed ===');
-            } else {
-                console.error('ERROR: connectionStatus element not found!');
+            console.log('=== AGGRESSIVE showConnectionStatus() called ===');
+            console.log('Message:', message);
+            console.log('Type:', type);
+            console.log('Browser:', navigator.userAgent);
+            
+            // First, try to clean up any existing emergency elements
+            if (window._emergencyStatus) {
+                try {
+                    window._emergencyStatus.remove();
+                } catch (e) {}
+                window._emergencyStatus = null;
             }
+            
+            // Define colors based on type
+            const bgColor = type === 'connecting' ? '#fff3e0' : '#e8f5e9';
+            const borderColor = type === 'connecting' ? '#ff9800' : '#4CAF50';
+            const textColor = type === 'connecting' ? '#ef6c00' : '#2e7d32';
+            
+            // TRY METHOD 1: Direct inline styling on existing element
+            const existingEl = document.getElementById('connectionStatus');
+            if (existingEl) {
+                console.log('Found existing element, applying aggressive styles...');
+                
+                // Apply extreme inline styles with !important
+                existingEl.setAttribute('style', 
+                    'display: block !important; ' +
+                    'visibility: visible !important; ' +
+                    'opacity: 1 !important; ' +
+                    'margin: 10px 0 !important; ' +
+                    'padding: 12px 20px !important; ' +
+                    'background: ' + bgColor + ' !important; ' +
+                    'border: 2px solid ' + borderColor + ' !important; ' +
+                    'border-radius: 8px !important; ' +
+                    'font-weight: bold !important; ' +
+                    'color: ' + textColor + ' !important; ' +
+                    'text-align: center !important;' +
+                    'font-size: 16px !important;' +
+                    'min-height: 30px !important;' +
+                    'width: 100% !important;' +
+                    'box-sizing: border-box !important;' +
+                    'z-index: 9999 !important;' +
+                    'position: relative !important;' +
+                    'box-shadow: 0 4px 15px rgba(0,0,0,0.2) !important;'
+                );
+                existingEl.textContent = message;
+                
+                // Force reflow and repaint
+                void existingEl.offsetWidth;
+                existingEl.style.display = 'block';
+                
+                // Check if it's visible
+                setTimeout(() => {
+                    const rect = existingEl.getBoundingClientRect();
+                    console.log('Existing element dimensions:', rect.width + 'x' + rect.height);
+                    
+                    if (rect.width < 10 || rect.height < 10) {
+                        console.log('Existing element too small, creating emergency element...');
+                        createEmergencyElement(message, bgColor, borderColor, textColor);
+                    }
+                }, 50);
+                
+            } else {
+                console.log('No existing element found, creating emergency element...');
+                createEmergencyElement(message, bgColor, borderColor, textColor);
+            }
+            
+            console.log('=== showConnectionStatus() completed ===');
+        }
+        
+        function createEmergencyElement(message, bgColor, borderColor, textColor) {
+            // Create emergency element that's guaranteed to be visible
+            const emergencyDiv = document.createElement('div');
+            emergencyDiv.id = 'connectionStatus-emergency';
+            emergencyDiv.textContent = message;
+            
+            // Apply maximum visibility styles
+            emergencyDiv.setAttribute('style',
+                'position: fixed !important; ' +
+                'top: 80px !important; ' +
+                'left: 50% !important; ' +
+                'transform: translateX(-50%) !important; ' +
+                'background: ' + bgColor + ' !important; ' +
+                'color: ' + textColor + ' !important; ' +
+                'padding: 15px 30px !important; ' +
+                'border-radius: 10px !important; ' +
+                'font-weight: bold !important; ' +
+                'font-size: 18px !important; ' +
+                'z-index: 10000 !important; ' +
+                'box-shadow: 0 6px 25px rgba(0,0,0,0.3) !important;' +
+                'border: 3px solid ' + borderColor + ' !important;' +
+                'min-width: 250px !important;' +
+                'text-align: center !important;' +
+                'animation: pulse 2s infinite !important;'
+            );
+            
+            // Add pulse animation
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes pulse {
+                    0% { box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.7); }
+                    70% { box-shadow: 0 0 0 15px rgba(255, 152, 0, 0); }
+                    100% { box-shadow: 0 0 0 0 rgba(255, 152, 0, 0); }
+                }
+            `;
+            document.head.appendChild(style);
+            
+            document.body.appendChild(emergencyDiv);
+            window._emergencyStatus = emergencyDiv;
+            window._emergencyStyle = style;
+            
+            console.log('Emergency element created with ID:', emergencyDiv.id);
         }
         
         function hideConnectionStatus() {
+            console.log('=== hideConnectionStatus() called ===');
+            
+            // Hide regular element
             const statusEl = document.getElementById('connectionStatus');
             if (statusEl) {
-                console.log('=== hideConnectionStatus() called ===');
-                
-                // Multiple hiding methods
                 statusEl.style.display = 'none';
                 statusEl.style.visibility = 'hidden';
                 statusEl.style.opacity = '0';
                 statusEl.style.height = '0';
                 statusEl.style.padding = '0';
                 statusEl.style.margin = '0';
-                statusEl.textContent = '';
-                
-                console.log('=== hideConnectionStatus() completed ===');
             }
+            
+            // Hide and remove any emergency element
+            if (window._emergencyStatus) {
+                window._emergencyStatus.style.display = 'none';
+                window._emergencyStatus.remove();
+                window._emergencyStatus = null;
+            }
+            
+            // Remove emergency style
+            if (window._emergencyStyle) {
+                window._emergencyStyle.remove();
+                window._emergencyStyle = null;
+            }
+            
+            console.log('=== hideConnectionStatus() completed ===');
         }
         
-        // ==== ADDED: Diagnostic test function ====
-        function testConnectionStatus() {
+        // ==== ULTIMATE TEST FUNCTION ====
+        function ultimateStatusTest() {
             console.clear();
-            console.log('=== CONNECTION STATUS DIAGNOSTIC TEST ===');
+            console.log('=== 🔥 ULTIMATE STATUS TEST 🔥 ===');
             console.log('Testing on:', navigator.userAgent);
-            console.log('Timestamp:', new Date().toISOString());
+            console.log('Time:', new Date().toISOString());
             
-            // Test 1: Check if element exists
-            const statusEl = document.getElementById('connectionStatus');
-            console.log('1. Element check:', statusEl ? 'Found' : 'NOT FOUND');
+            // Remove any existing test elements
+            const testEl = document.getElementById('status-test-element');
+            if (testEl) testEl.remove();
             
-            if (statusEl) {
-                console.log('   - Tag:', statusEl.tagName);
-                console.log('   - ID:', statusEl.id);
-                console.log('   - Current display:', statusEl.style.display);
-                console.log('   - Current text:', statusEl.textContent);
+            // Create a test element with extreme styling
+            const testDiv = document.createElement('div');
+            testDiv.id = 'status-test-element';
+            testDiv.textContent = '🔥 THIS TEXT MUST BE VISIBLE ON ALL DEVICES 🔥';
+            testDiv.setAttribute('style',
+                'position: fixed !important; ' +
+                'top: 150px !important; ' +
+                'left: 50% !important; ' +
+                'transform: translateX(-50%) !important; ' +
+                'background: #FF0000 !important; ' +
+                'color: #FFFFFF !important; ' +
+                'padding: 20px 40px !important; ' +
+                'border-radius: 15px !important; ' +
+                'font-weight: bold !important; ' +
+                'font-size: 20px !important; ' +
+                'z-index: 10001 !important; ' +
+                'box-shadow: 0 8px 30px rgba(255,0,0,0.5) !important;' +
+                'border: 4px solid #FFFF00 !important;' +
+                'text-align: center !important;' +
+                'animation: flashTest 0.5s infinite !important;'
+            );
+            
+            // Add flashing animation
+            const flashStyle = document.createElement('style');
+            flashStyle.textContent = `
+                @keyframes flashTest {
+                    0%, 100% { opacity: 1; transform: translateX(-50%) scale(1); }
+                    50% { opacity: 0.7; transform: translateX(-50%) scale(1.05); }
+                }
+            `;
+            document.head.appendChild(flashStyle);
+            
+            document.body.appendChild(testDiv);
+            
+            // Verify visibility
+            setTimeout(() => {
+                const rect = testDiv.getBoundingClientRect();
+                console.log('Test element dimensions:', rect.width + 'x' + rect.height);
+                console.log('Visible on screen:', rect.width > 100 && rect.height > 30);
                 
-                // Test 2: Check CSS
-                const computed = window.getComputedStyle(statusEl);
-                console.log('2. CSS check:');
-                console.log('   - Display:', computed.display);
-                console.log('   - Visibility:', computed.visibility);
-                console.log('   - Opacity:', computed.opacity);
-                console.log('   - Height:', computed.height);
-                console.log('   - Width:', computed.width);
+                if (rect.width < 100 || rect.height < 30) {
+                    alert('🚨 CRITICAL: Test element is too small! This browser has rendering issues.');
+                    console.error('Test element too small:', rect);
+                } else {
+                    console.log('✅ Test element is properly sized');
+                }
                 
-                // Test 3: Show test message
-                console.log('3. Showing test message...');
-                showConnectionStatus('TEST: Should be visible', 'connecting');
-                
-                // Test 4: Check after showing
+                // Clean up after 5 seconds
                 setTimeout(() => {
-                    console.log('4. After show check:');
-                    const afterComputed = window.getComputedStyle(statusEl);
-                    console.log('   - Display:', afterComputed.display);
-                    console.log('   - Visibility:', afterComputed.visibility);
-                    console.log('   - Opacity:', afterComputed.opacity);
-                    
-                    // Test 5: Check position
-                    const rect = statusEl.getBoundingClientRect();
-                    console.log('5. Position check:');
-                    console.log('   - Top:', rect.top);
-                    console.log('   - Left:', rect.left);
-                    console.log('   - Width:', rect.width);
-                    console.log('   - Height:', rect.height);
-                    console.log('   - Visible:', rect.width > 0 && rect.height > 0);
-                    
-                    if (rect.width === 0 || rect.height === 0) {
-                        console.error('   ERROR: Element has zero dimensions!');
-                        alert('Element has zero size! This is likely a CSS issue.');
-                    }
-                    
-                    // Test 6: Hide after 3 seconds
-                    setTimeout(() => {
-                        console.log('6. Hiding test message...');
-                        hideConnectionStatus();
-                        console.log('=== TEST COMPLETE ===');
-                    }, 3000);
-                }, 100);
-            } else {
-                alert('ERROR: connectionStatus element not found in DOM!');
-            }
+                    testDiv.remove();
+                    flashStyle.remove();
+                    console.log('=== TEST COMPLETE ===');
+                }, 5000);
+            }, 1000);
         }
         
         // ==== MODIFIED: Monitor when hangup button becomes active (call connected) ====
