@@ -23,7 +23,7 @@ const CallManager = {
         UIManager.updateCallButtons();
         
         // Ensure permissions
-        const hasPerms = await AuthManager.ensureMediaPermissions();
+        const hasPerms = await AuthManager.ensureMediaPermissions(true); 
         if (!hasPerms) {
             UIManager.showError('Need camera/mic permissions to call');
             return;
