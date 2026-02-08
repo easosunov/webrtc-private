@@ -65,11 +65,13 @@ const CallManager = {
         CONFIG.incomingCallFrom = data.callerName;
         CONFIG.isInitiator = false;
         
-        this.showIncomingCallNotification(data.callerName);
+        // Pass the display name from the data if available, otherwise use callerName
+        const displayName = data.callerDisplayName || data.callerName;
+        this.showIncomingCallNotification(displayName);
         UIManager.updateCallButtons();
     },
     
-    showIncomingCallNotification(callerName) {
+    showIncomingCallNotification(callerDisplayName) {
         // Remove any existing notification
         const existing = document.getElementById('incoming-call-notification');
         if (existing) existing.remove();
@@ -92,7 +94,7 @@ const CallManager = {
         
         notification.innerHTML = `
             <h3 style="margin: 0 0 10px 0; color: #333;">📞 Incoming Call</h3>
-            <p style="margin: 0 0 15px 0;">From: <strong>${callerName}</strong></p>
+            <p style="margin: 0 0 15px 0;">From: <strong>${callerDisplayName}</strong></p>
             <div style="display: flex; gap: 10px;">
                 <button id="accept-btn" style="flex: 1; background: #4CAF50; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer;">Accept</button>
                 <button id="reject-btn" style="flex: 1; background: #f44336; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer;">Reject</button>
