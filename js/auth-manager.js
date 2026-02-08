@@ -1,50 +1,50 @@
-// js/auth-manager.js - ORIGINAL WORKING VERSION
+// js/auth-manager.js
 const AuthManager = {
     async login() {
-        // Get access code from hidden input
-        const accessCode = CONFIG.elements.accessCodeInput ? 
-                          CONFIG.elements.accessCodeInput.value.trim() : '';
+        const username = CONFIG.elements.usernameInput.value.trim();
+        const password = CONFIG.elements.passwordInput.value;
         
-        if (!accessCode) {
-            UIManager.showError('Please enter an access code');
+        if (!username || !password) {
+            UIManager.showError('Enter username and password');
             return;
         }
         
-        console.log('Login attempt with code:', accessCode);
+        console.log('Login attempt:', username);
         UIManager.showStatus('Logging in...');
         
-        // Send to server
         WebSocketClient.sendToServer({
             type: 'login',
-            accessCode: accessCode
+            username: username,
+            password: password
         });
     },
     
     handleLoginSuccess(data) {
-        CONFIG.myId = data.socketId || data.userId;
-        CONFIG.myUsername = data.displayName || data.username;
+        CONFIG.myId = data.userId;
+        CONFIG.myUsername = data.username;
         CONFIG.isAdmin = data.isAdmin || false;
+        CONFIG.adminSocketId = data.adminSocketId || null;
         
         console.log(`✅ Logged in: ${CONFIG.myUsername}, Admin: ${CONFIG.isAdmin}`);
+        console.log(`📍 Admin socket: ${CONFIG.adminSocketId}`);
         
         UIManager.showCallScreen();
-        UIManager.showStatus(`Logged in as ${CONFIG.myUsername}`);
+        UIManager.showStatus(`Logged in as ${CONFIG.myUsername} ${CONFIG.isAdmin ? '(Admin)' : ''}`);
         
-        // Get media for preview
+        // Request user list if admin
+        if (CONFIG.isAdmin) {
+            setTimeout(() => WebSocketClient.sendToServer({ type: 'get-users' }), 500);
+        }
+        
+        // Check permissions
         setTimeout(async () => {
+            await this.checkPermissions();
             await this.ensureMediaPermissions();
-        }, 100);
+        }, 500);
     },
     
     logout() {
-        console.log('Logging out...');
-        
-        // Send logout if connected
-        if (CONFIG.ws && CONFIG.ws.readyState === WebSocket.OPEN) {
-            WebSocketClient.sendToServer({ type: 'logout' });
-        }
-        
-        // Cleanup
+        WebSocketClient.sendToServer({ type: 'logout' });
         CallManager.cleanupCall();
         
         if (CONFIG.localStream) {
@@ -52,23 +52,34 @@ const AuthManager = {
             CONFIG.localStream = null;
         }
         
-        // Reset UI
         UIManager.showLoginScreen();
-        if (CONFIG.elements.localVideo) {
-            CONFIG.elements.localVideo.srcObject = null;
-        }
-        if (CONFIG.elements.remoteVideo) {
-            CONFIG.elements.remoteVideo.srcObject = null;
-        }
+        CONFIG.elements.localVideo.srcObject = null;
+        CONFIG.elements.remoteVideo.srcObject = null;
         
         // Reset state
         CONFIG.myId = null;
         CONFIG.myUsername = null;
         CONFIG.isAdmin = false;
         CONFIG.adminSocketId = null;
+        CONFIG.connectedUsers = [];
         CONFIG.hasMediaPermissions = false;
         
         UIManager.showStatus('Logged out');
+    },
+    
+    async checkPermissions() {
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            CONFIG.hasMediaPermissions = devices.some(device => 
+                (device.kind === 'audioinput' || device.kind === 'videoinput') && 
+                device.deviceId !== ''
+            );
+            console.log('Media permissions:', CONFIG.hasMediaPermissions ? 'Granted' : 'Not granted');
+            return CONFIG.hasMediaPermissions;
+        } catch (error) {
+            console.log('Cannot check permissions:', error);
+            return false;
+        }
     },
     
     async ensureMediaPermissions() {
@@ -102,6 +113,7 @@ const AuthManager = {
             
         } catch (error) {
             console.error('Failed to get media permissions:', error);
+            UIManager.showError('Camera/microphone access is required for calls');
             return false;
         }
     }
