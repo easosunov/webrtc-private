@@ -348,7 +348,7 @@
         font-style: italic;
     }
     
-    /* Connection status */
+    /* Connection status - FIXED TYPO IN COLOR VALUE */
     .connection-status {
         margin: 5px 0; /* Reduced margin */
         padding: 8px 12px; /* Reduced padding */
@@ -356,7 +356,7 @@
         border-radius: 5px;
         border-left: 4px solid #2196F3;
         font-weight: bold;
-        color: #1976D32;
+        color: #1976D3; /* FIXED: Removed extra '2' */
         text-align: center;
         display: none;
         font-size: 0.9rem; /* Slightly smaller font */
@@ -440,7 +440,7 @@
 </head>
 <body>
     <div id="login">
-        <h2 style="text-align: center; margin-bottom: 30px;">Private WebRTC Communicator</h2>
+        <!-- REMOVED: <h2 style="text-align: center; margin-bottom: 30px;">Private WebRTC Communicator</h2> -->
         
         <!-- Hidden input for keyboard support -->
         <input type="text" id="hiddenAccessCode" inputmode="numeric" pattern="[0-9+]*" autocomplete="off">
@@ -557,6 +557,14 @@
             <!-- Hidden Debug button -->
             <button onclick="debug()" class="hidden-button">Debug</button>
         </div>
+        
+        <!-- ADDED: Diagnostic test button -->
+        <div style="margin-top: 10px; text-align: center;">
+            <button onclick="testConnectionStatus()" 
+                    style="background: #2196F3; color: white; padding: 5px 10px; font-size: 12px;">
+                Test Connection Status
+            </button>
+        </div>
     </div>
     
     <!-- Hidden ringtone -->
@@ -565,6 +573,13 @@
     </audio>
     
     <script>
+        // ==== ADDED: Early debug info ====
+        console.log('=== PAGE LOAD DEBUG ===');
+        console.log('URL:', window.location.href);
+        console.log('Browser:', navigator.userAgent);
+        console.log('Platform:', navigator.platform);
+        console.log('connectionStatus element at load:', document.getElementById('connectionStatus'));
+        
         // Android cache control - ADD THIS FUNCTION
         function clearAndroidCache() {
             // Clear service workers
@@ -593,6 +608,13 @@
         
         // Run cache clearing on page load
         window.addEventListener('load', function() {
+            console.log('Script loading order check - main functions available:');
+            console.log('  - showConnectionStatus:', typeof showConnectionStatus);
+            console.log('  - startCall:', typeof startCall);
+            console.log('  - callAdmin:', typeof callAdmin);
+            console.log('  - UIManager:', typeof UIManager);
+            console.log('  - CONFIG:', typeof CONFIG);
+            
             if (/Android/.test(navigator.userAgent)) {
                 console.log('Android detected, clearing caches');
                 clearAndroidCache();
@@ -686,26 +708,153 @@
             }
         }
         
-        // Connection status management
+        // ==== MODIFIED: Connection status management with diagnostics ====
         function showConnectionStatus(message, type = 'connecting') {
             const statusEl = document.getElementById('connectionStatus');
             if (statusEl) {
+                console.log('=== showConnectionStatus() called ===');
+                console.log('Message:', message);
+                console.log('Type:', type);
+                console.log('Browser:', navigator.userAgent);
+                console.log('Element exists:', !!statusEl);
+                console.log('Current display:', statusEl.style.display);
+                console.log('Current className:', statusEl.className);
+                
+                // Set content and class
                 statusEl.textContent = message;
                 statusEl.className = 'connection-status ' + type;
+                
+                // Multiple display methods for cross-browser compatibility
                 statusEl.style.display = 'block';
+                statusEl.style.visibility = 'visible';
+                statusEl.style.opacity = '1';
+                
+                // Force reflow (helps some browsers)
+                void statusEl.offsetWidth;
+                
+                // Check computed styles
+                const computed = window.getComputedStyle(statusEl);
+                console.log('Computed display:', computed.display);
+                console.log('Computed visibility:', computed.visibility);
+                console.log('Computed opacity:', computed.opacity);
+                console.log('Computed height:', computed.height);
+                
+                // Nuclear option if still hidden
+                if (computed.display === 'none' || computed.visibility === 'hidden') {
+                    console.warn('Element still hidden! Applying nuclear fix...');
+                    
+                    // Force inline styles with !important
+                    const bgColor = type === 'connecting' ? '#fff3e0' : '#e8f5e9';
+                    const borderColor = type === 'connecting' ? '#ff9800' : '#4CAF50';
+                    const textColor = type === 'connecting' ? '#ef6c00' : '#2e7d32';
+                    
+                    statusEl.setAttribute('style', 
+                        'display: block !important; ' +
+                        'visibility: visible !important; ' +
+                        'opacity: 1 !important; ' +
+                        'margin: 5px 0 !important; ' +
+                        'padding: 8px 12px !important; ' +
+                        'background: ' + bgColor + ' !important; ' +
+                        'border-left: 4px solid ' + borderColor + ' !important; ' +
+                        'border-radius: 5px !important; ' +
+                        'font-weight: bold !important; ' +
+                        'color: ' + textColor + ' !important; ' +
+                        'text-align: center !important;' +
+                        'font-size: 14px !important;'
+                    );
+                }
+                
+                console.log('=== showConnectionStatus() completed ===');
+            } else {
+                console.error('ERROR: connectionStatus element not found!');
             }
         }
         
         function hideConnectionStatus() {
             const statusEl = document.getElementById('connectionStatus');
             if (statusEl) {
+                console.log('=== hideConnectionStatus() called ===');
+                
+                // Multiple hiding methods
                 statusEl.style.display = 'none';
+                statusEl.style.visibility = 'hidden';
+                statusEl.style.opacity = '0';
+                statusEl.style.height = '0';
+                statusEl.style.padding = '0';
+                statusEl.style.margin = '0';
                 statusEl.textContent = '';
+                
+                console.log('=== hideConnectionStatus() completed ===');
+            }
+        }
+        
+        // ==== ADDED: Diagnostic test function ====
+        function testConnectionStatus() {
+            console.clear();
+            console.log('=== CONNECTION STATUS DIAGNOSTIC TEST ===');
+            console.log('Testing on:', navigator.userAgent);
+            console.log('Timestamp:', new Date().toISOString());
+            
+            // Test 1: Check if element exists
+            const statusEl = document.getElementById('connectionStatus');
+            console.log('1. Element check:', statusEl ? 'Found' : 'NOT FOUND');
+            
+            if (statusEl) {
+                console.log('   - Tag:', statusEl.tagName);
+                console.log('   - ID:', statusEl.id);
+                console.log('   - Current display:', statusEl.style.display);
+                console.log('   - Current text:', statusEl.textContent);
+                
+                // Test 2: Check CSS
+                const computed = window.getComputedStyle(statusEl);
+                console.log('2. CSS check:');
+                console.log('   - Display:', computed.display);
+                console.log('   - Visibility:', computed.visibility);
+                console.log('   - Opacity:', computed.opacity);
+                console.log('   - Height:', computed.height);
+                console.log('   - Width:', computed.width);
+                
+                // Test 3: Show test message
+                console.log('3. Showing test message...');
+                showConnectionStatus('TEST: Should be visible', 'connecting');
+                
+                // Test 4: Check after showing
+                setTimeout(() => {
+                    console.log('4. After show check:');
+                    const afterComputed = window.getComputedStyle(statusEl);
+                    console.log('   - Display:', afterComputed.display);
+                    console.log('   - Visibility:', afterComputed.visibility);
+                    console.log('   - Opacity:', afterComputed.opacity);
+                    
+                    // Test 5: Check position
+                    const rect = statusEl.getBoundingClientRect();
+                    console.log('5. Position check:');
+                    console.log('   - Top:', rect.top);
+                    console.log('   - Left:', rect.left);
+                    console.log('   - Width:', rect.width);
+                    console.log('   - Height:', rect.height);
+                    console.log('   - Visible:', rect.width > 0 && rect.height > 0);
+                    
+                    if (rect.width === 0 || rect.height === 0) {
+                        console.error('   ERROR: Element has zero dimensions!');
+                        alert('Element has zero size! This is likely a CSS issue.');
+                    }
+                    
+                    // Test 6: Hide after 3 seconds
+                    setTimeout(() => {
+                        console.log('6. Hiding test message...');
+                        hideConnectionStatus();
+                        console.log('=== TEST COMPLETE ===');
+                    }, 3000);
+                }, 100);
+            } else {
+                alert('ERROR: connectionStatus element not found in DOM!');
             }
         }
         
         // ==== MODIFIED: Call function with improved error handling ====
         function startCall() {
+            console.log('=== startCall() triggered ===');
             // Show connecting status
             showConnectionStatus('Connecting...', 'connecting');
             
@@ -715,9 +864,18 @@
             // Then call the admin
             if (CONFIG.adminSocketId) {
                 if (typeof callAdmin === 'function') {
+                    console.log('Calling admin with socket ID:', CONFIG.adminSocketId);
                     callAdmin();
+                } else {
+                    console.error('callAdmin function not available!');
+                    UIManager.showError('System error: Call function not available');
+                    setTimeout(() => {
+                        hideConnectionStatus();
+                        stopMonitoring();
+                    }, 1000);
                 }
             } else {
+                console.warn('Admin is offline - no adminSocketId');
                 UIManager.showError('Admin is offline');
                 // Hide status after a moment if admin is offline
                 setTimeout(() => {
@@ -729,6 +887,7 @@
         
         // ==== MODIFIED: Monitor when hangup button becomes active (call connected) ====
         function monitorCallConnection() {
+            console.log('=== monitorCallConnection() started ===');
             // Clear any existing monitoring first
             if (callMonitorInterval) {
                 clearInterval(callMonitorInterval);
@@ -758,6 +917,7 @@
                 stopMonitoring();
                 // Hide status if call times out
                 hideConnectionStatus();
+                console.log('Call timeout - monitoring stopped');
             }, 60000);
         }
         
