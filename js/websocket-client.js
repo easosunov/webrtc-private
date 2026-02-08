@@ -1,4 +1,4 @@
-// js/websocket-client.js - UPDATED VERSION with correct method names
+// js/websocket-client.js - MINIMAL FIX VERSION
 const WebSocketClient = {
     connect() {
         return new Promise((resolve, reject) => {
@@ -102,7 +102,7 @@ const WebSocketClient = {
                     this.handleAdminOffline(message);
                     break;
                     
-                // FIXED: Use the correct method name
+                // FIX: Changed from CallManager.handleIncomingCall to CallManager.handleCallInitiated
                 case 'call-initiated':
                     CallManager.handleCallInitiated(message);
                     break;
@@ -123,14 +123,22 @@ const WebSocketClient = {
                     CallManager.handleCallEnded(message);
                     break;
                     
-                // FIXED: Use WebRTCManager instead of CallManager for signaling
+                // FIX: Use direct method calls instead of handleSignalingMessage
                 case 'offer':
+                    if (WebRTCManager && typeof WebRTCManager.handleOffer === 'function') {
+                        WebRTCManager.handleOffer(message);
+                    }
+                    break;
+                    
                 case 'answer':
+                    if (WebRTCManager && typeof WebRTCManager.handleAnswer === 'function') {
+                        WebRTCManager.handleAnswer(message);
+                    }
+                    break;
+                    
                 case 'ice-candidate':
-                    if (window.WebRTCManager) {
-                        WebRTCManager.handleSignalingMessage(message);
-                    } else {
-                        console.error('WebRTCManager not found');
+                    if (WebRTCManager && typeof WebRTCManager.handleIceCandidate === 'function') {
+                        WebRTCManager.handleIceCandidate(message);
                     }
                     break;
                     
