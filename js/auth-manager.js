@@ -1,21 +1,43 @@
-// js/auth-manager.js
+// js/auth-manager.js - COMPLETE FIXED VERSION
 const AuthManager = {
     async login() {
-        const username = CONFIG.elements.usernameInput.value.trim();
-        const password = CONFIG.elements.passwordInput.value;
+        console.log('Login function called');
         
-        if (!username || !password) {
-            UIManager.showError('Enter username and password');
+        // Get access code directly from the keypad interface
+        const hiddenAccessCodeInput = document.getElementById('hiddenAccessCode');
+        let accessCode = '';
+        
+        if (hiddenAccessCodeInput && hiddenAccessCodeInput.value) {
+            accessCode = hiddenAccessCodeInput.value.trim();
+        }
+        
+        // Fallback to display text
+        if (!accessCode) {
+            const accessCodeDisplay = document.getElementById('accessCodeDisplay');
+            const displayText = accessCodeDisplay?.textContent || '';
+            if (displayText && displayText !== 'Enter Code') {
+                accessCode = displayText.trim();
+            }
+        }
+        
+        // Also check global variable as last resort
+        if (!accessCode && window.accessCode) {
+            accessCode = window.accessCode.trim();
+        }
+        
+        if (!accessCode || accessCode === 'Enter Code') {
+            UIManager.showError('Please enter an access code');
             return;
         }
         
-        console.log('Login attempt:', username);
+        console.log('Login attempt with access code:', accessCode);
         UIManager.showStatus('Logging in...');
         
+        // Send login request (server expects 'accessCode' field)
         WebSocketClient.sendToServer({
             type: 'login',
-            username: username,
-            password: password
+            accessCode: accessCode,
+            timestamp: Date.now()
         });
     },
     
@@ -53,8 +75,24 @@ const AuthManager = {
         }
         
         UIManager.showLoginScreen();
-        CONFIG.elements.localVideo.srcObject = null;
-        CONFIG.elements.remoteVideo.srcObject = null;
+        
+        // Clear the access code
+        const accessCodeDisplay = document.getElementById('accessCodeDisplay');
+        const hiddenAccessCodeInput = document.getElementById('hiddenAccessCode');
+        if (accessCodeDisplay) accessCodeDisplay.textContent = 'Enter Code';
+        if (hiddenAccessCodeInput) hiddenAccessCodeInput.value = '';
+        
+        // Reset global accessCode variable
+        if (window.accessCode !== undefined) {
+            window.accessCode = '';
+        }
+        
+        if (CONFIG.elements && CONFIG.elements.localVideo) {
+            CONFIG.elements.localVideo.srcObject = null;
+        }
+        if (CONFIG.elements && CONFIG.elements.remoteVideo) {
+            CONFIG.elements.remoteVideo.srcObject = null;
+        }
         
         // Reset state
         CONFIG.myId = null;
@@ -102,7 +140,7 @@ const AuthManager = {
             CONFIG.localStream = await navigator.mediaDevices.getUserMedia(constraints);
             CONFIG.hasMediaPermissions = true;
             
-            if (CONFIG.elements.localVideo) {
+            if (CONFIG.elements && CONFIG.elements.localVideo) {
                 CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
                 CONFIG.elements.localVideo.muted = true;
                 CONFIG.elements.localVideo.play().catch(e => console.log('Local video play:', e));
