@@ -120,15 +120,33 @@ const AuthManager = {
         }
     },
     
-    async ensureMediaPermissions() {
-        if (CONFIG.hasMediaPermissions && CONFIG.localStream) {
-            return true;
-        }
+
+async ensureMediaPermissions() {
+    if (CONFIG.hasMediaPermissions && CONFIG.localStream) {
+        return true;
+    }
+    
+    try {
+        UIManager.showStatus('Requesting camera/microphone access...');
         
-        try {
-            UIManager.showStatus('Requesting camera/microphone access...');
+        // Use dynamic constraints from Resolution Manager if available
+        let constraints;
+        if (window.ResolutionManager && typeof ResolutionManager.getStreamWithCurrentResolution === 'function') {
+            // Let ResolutionManager handle stream creation with current resolution
+            CONFIG.localStream = await ResolutionManager.getStreamWithCurrentResolution();
+            CONFIG.hasMediaPermissions = true;
             
-            const constraints = {
+            if (CONFIG.elements && CONFIG.elements.localVideo) {
+                CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
+                CONFIG.elements.localVideo.muted = true;
+                CONFIG.elements.localVideo.play().catch(e => console.log('Local video play:', e));
+            }
+            
+            console.log('✅ Media permissions granted with resolution control');
+            return true;
+        } else {
+            // Fallback to original hardcoded constraints
+            constraints = {
                 audio: true,
                 video: {
                     width: { ideal: 640 },
@@ -148,13 +166,15 @@ const AuthManager = {
             
             console.log('✅ Media permissions granted');
             return true;
-            
-        } catch (error) {
-            console.error('Failed to get media permissions:', error);
-            UIManager.showError('Camera/microphone access is required for calls');
-            return false;
         }
+        
+    } catch (error) {
+        console.error('Failed to get media permissions:', error);
+        UIManager.showError('Camera/microphone access is required for calls');
+        return false;
     }
+}
+
 };
 
 window.AuthManager = AuthManager;
