@@ -178,6 +178,12 @@
         box-shadow: 2px 2px 5px #d9d9d9, -2px -2px 5px #ffffff;
     }
     
+    /* Keyboard-active state for visual feedback */
+    .keypad-btn.key-active {
+        transform: scale(0.95) !important;
+        box-shadow: 2px 2px 5px #d9d9d9, -2px -2px 5px #ffffff !important;
+    }
+    
     .keypad-btn.enter-btn {
         background: linear-gradient(145deg, #4CAF50, #45a049);
         color: white;
@@ -520,6 +526,39 @@
             AuthManager.login();
         }
         
+        // Highlight keypad button when key is pressed
+        function highlightKeypadButton(key) {
+            // Map keyboard keys to button selectors
+            const keyMap = {
+                '1': 'button[onclick="addToCode(\'1\')"]',
+                '2': 'button[onclick="addToCode(\'2\')"]',
+                '3': 'button[onclick="addToCode(\'3\')"]',
+                '4': 'button[onclick="addToCode(\'4\')"]',
+                '5': 'button[onclick="addToCode(\'5\')"]',
+                '6': 'button[onclick="addToCode(\'6\')"]',
+                '7': 'button[onclick="addToCode(\'7\')"]',
+                '8': 'button[onclick="addToCode(\'8\')"]',
+                '9': 'button[onclick="addToCode(\'9\')"]',
+                '0': 'button[onclick="addToCode(\'0\')"]',
+                '+': 'button[onclick="addToCode(\'+\')"]',
+                '#': 'button[onclick="addToCode(\'#\')"]'
+            };
+            
+            const selector = keyMap[key];
+            if (selector) {
+                const button = document.querySelector(selector);
+                if (button) {
+                    // Add active class
+                    button.classList.add('key-active');
+                    
+                    // Remove highlight after 150ms (matching CSS transition)
+                    setTimeout(() => {
+                        button.classList.remove('key-active');
+                    }, 150);
+                }
+            }
+        }
+        
         // Play Videos function
         function playVideo() {
             const localVideo = document.getElementById('localVideo');
@@ -664,16 +703,29 @@
                 updateDisplay();
             });
             
-            // Handle key presses
+            // Handle key presses in hidden input
             hiddenInput.addEventListener('keydown', function(e) {
                 if (!/[0-9+#]/.test(e.key) && 
                     !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'].includes(e.key)) {
                     e.preventDefault();
                 }
                 
+                // Show visual feedback for keypad keys
+                if (/[0-9+#]/.test(e.key)) {
+                    highlightKeypadButton(e.key);
+                }
+                
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     submitCode();
+                    // Highlight Enter button
+                    const enterButton = document.querySelector('.enter-btn');
+                    if (enterButton) {
+                        enterButton.classList.add('key-active');
+                        setTimeout(() => {
+                            enterButton.classList.remove('key-active');
+                        }, 150);
+                    }
                 }
                 
                 if (e.key === 'Escape') {
@@ -682,15 +734,25 @@
                 }
             });
             
-            // Allow direct key presses
+            // Allow direct key presses (when hidden input is not focused)
             document.addEventListener('keydown', function(e) {
                 if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
                     if (/[0-9+#]/.test(e.key)) {
                         e.preventDefault();
                         addToCode(e.key);
+                        // Add visual feedback
+                        highlightKeypadButton(e.key);
                     } else if (e.key === 'Enter') {
                         e.preventDefault();
                         submitCode();
+                        // Highlight Enter button
+                        const enterButton = document.querySelector('.enter-btn');
+                        if (enterButton) {
+                            enterButton.classList.add('key-active');
+                            setTimeout(() => {
+                                enterButton.classList.remove('key-active');
+                            }, 150);
+                        }
                     } else if (e.key === 'Backspace') {
                         e.preventDefault();
                         backspaceCode();
