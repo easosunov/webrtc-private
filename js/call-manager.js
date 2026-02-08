@@ -146,7 +146,15 @@ const CallManager = {
     },
     
     rejectCall() {
-        console.log('Rejecting call');
+        console.log('=== CallManager.rejectCall() - stopping monitoring ===');
+        
+        // ADDED: Clean up status monitoring
+        if (typeof stopMonitoring !== 'undefined') {
+            stopMonitoring();
+        }
+        if (typeof hideConnectionStatus !== 'undefined') {
+            hideConnectionStatus();
+        }
         
         if (CONFIG.targetSocketId) {
             WebSocketClient.sendToServer({
@@ -191,18 +199,48 @@ const CallManager = {
     },
     
     handleCallRejected(data) {
+        console.log('=== CallManager.handleCallRejected() - stopping monitoring ===');
+        
+        // ADDED: Clean up status monitoring
+        if (typeof stopMonitoring !== 'undefined') {
+            stopMonitoring();
+        }
+        if (typeof hideConnectionStatus !== 'undefined') {
+            hideConnectionStatus();
+        }
+        
         console.log('Call rejected by:', data.rejecterName);
         this.cleanupCall();
         UIManager.showStatus('Call rejected by ' + (data.rejecterName || 'user'));
     },
     
     handleCallEnded(data) {
+        console.log('=== CallManager.handleCallEnded() - stopping monitoring ===');
+        
+        // ADDED: Clean up status monitoring
+        if (typeof stopMonitoring !== 'undefined') {
+            stopMonitoring();
+        }
+        if (typeof hideConnectionStatus !== 'undefined') {
+            hideConnectionStatus();
+        }
+        
         console.log('Call ended by remote:', data.endedByName || 'remote user');
         this.cleanupCall();
         UIManager.showStatus('Call ended by ' + (data.endedByName || 'remote user'));
     },
     
     hangup() {
+        console.log('=== CallManager.hangup() - stopping monitoring ===');
+        
+        // ADDED: Clean up status monitoring
+        if (typeof stopMonitoring !== 'undefined') {
+            stopMonitoring();
+        }
+        if (typeof hideConnectionStatus !== 'undefined') {
+            hideConnectionStatus();
+        }
+        
         console.log('Ending call');
         UIManager.showStatus('Ending call...');
         
