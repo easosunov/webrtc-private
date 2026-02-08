@@ -588,6 +588,9 @@
             return true;
         }
         
+        // ==== ADDED: Interval tracking variable for monitoring ====
+        let callMonitorInterval = null;
+        
         // Run cache clearing on page load
         window.addEventListener('load', function() {
             if (/Android/.test(navigator.userAgent)) {
@@ -701,7 +704,7 @@
             }
         }
         
-        // Call function with status
+        // ==== MODIFIED: Call function with improved error handling ====
         function startCall() {
             // Show connecting status
             showConnectionStatus('Connecting...', 'connecting');
@@ -719,14 +722,21 @@
                 // Hide status after a moment if admin is offline
                 setTimeout(() => {
                     hideConnectionStatus();
+                    stopMonitoring();  // ADDED: Stop monitoring if admin offline
                 }, 1000);
             }
         }
         
-        // Monitor when hangup button becomes active (call connected)
+        // ==== MODIFIED: Monitor when hangup button becomes active (call connected) ====
         function monitorCallConnection() {
+            // Clear any existing monitoring first
+            if (callMonitorInterval) {
+                clearInterval(callMonitorInterval);
+                callMonitorInterval = null;
+            }
+            
             // Check every 500ms for hangup button state
-            const checkInterval = setInterval(() => {
+            callMonitorInterval = setInterval(() => {
                 const hangupBtn = document.querySelector('.btn-hangup.active');
                 if (hangupBtn && !hangupBtn.disabled) {
                     // Call is connected, update status
@@ -737,17 +747,27 @@
                         hideConnectionStatus();
                     }, 3000);
                     
-                    clearInterval(checkInterval);
-                    console.log('Call connected');
+                    // Stop monitoring since call is connected
+                    stopMonitoring();
+                    console.log('Call connected - monitoring stopped');
                 }
             }, 500);
             
             // Also stop checking after 60 seconds (call timeout)
             setTimeout(() => {
-                clearInterval(checkInterval);
+                stopMonitoring();
                 // Hide status if call times out
                 hideConnectionStatus();
             }, 60000);
+        }
+        
+        // ==== ADDED: Function to stop monitoring interval ====
+        function stopMonitoring() {
+            if (callMonitorInterval) {
+                clearInterval(callMonitorInterval);
+                callMonitorInterval = null;
+                console.log('Call monitoring stopped');
+            }
         }
         
         // Hook into existing call functions for admin calling users
@@ -762,20 +782,22 @@
             };
         }
         
-        // Ensure hangup hides status
+        // ==== MODIFIED: Ensure hangup hides status AND stops monitoring ====
         const originalHangup = window.hangup;
         if (originalHangup && typeof originalHangup === 'function') {
             window.hangup = function() {
                 hideConnectionStatus();
+                stopMonitoring();  // ADDED: Stop monitoring
                 return originalHangup();
             };
         }
         
-        // Also hide status on logout
+        // ==== MODIFIED: Also hide status AND stop monitoring on logout ====
         const originalLogout = window.logout;
         if (originalLogout && typeof originalLogout === 'function') {
             window.logout = function() {
                 hideConnectionStatus();
+                stopMonitoring();  // ADDED: Stop monitoring
                 return originalLogout();
             };
         }
@@ -790,10 +812,12 @@
             };
         }
         
+        // ==== MODIFIED: rejectCall hook to stop monitoring ====
         if (window.rejectCall && typeof window.rejectCall === 'function') {
             const originalRejectCall = window.rejectCall;
             window.rejectCall = function() {
                 hideConnectionStatus();
+                stopMonitoring();  // ADDED: Stop the monitoring interval
                 return originalRejectCall();
             };
         }
