@@ -1,21 +1,21 @@
 // js/auth-manager.js
 const AuthManager = {
     async login() {
-        const username = CONFIG.elements.usernameInput.value.trim();
-        const password = CONFIG.elements.passwordInput.value;
+        // FIX: Use access code input, not username/password
+        const accessCode = CONFIG.elements.accessCodeInput ? 
+                          CONFIG.elements.accessCodeInput.value.trim() : '';
         
-        if (!username || !password) {
-            UIManager.showError('Enter username and password');
+        if (!accessCode) {
+            UIManager.showError('Please enter an access code');
             return;
         }
         
-        console.log('Login attempt:', username);
+        console.log('Login attempt with code:', accessCode);
         UIManager.showStatus('Logging in...');
         
         WebSocketClient.sendToServer({
             type: 'login',
-            username: username,
-            password: password
+            accessCode: accessCode  // Changed from username/password
         });
     },
     
