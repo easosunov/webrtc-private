@@ -552,8 +552,8 @@
             <div class="user-line" id="userLine-admin">
                 <span class="username">Administrator</span>
                 <!-- Call and Hang Up buttons only -->
-                <!-- CHANGED: onclick="startCall()" to onclick="callAdmin()" -->
-                <button class="btn-call" onclick="callAdmin()">Call</button>
+                <!-- CHANGED: onclick="callAdmin()" to onclick="startCall()" -->
+                <button class="btn-call" onclick="startCall()">Call</button>
                 <button class="btn-hangup" onclick="hangup()" disabled>Hang Up<span class="shortcut-hint">(Esc)</span></button>
             </div>
         </div>
@@ -636,12 +636,38 @@
         // ==== ADDED: Interval tracking variable for monitoring ====
         let callMonitorInterval = null;
         
+        // ==== SIMPLE FIX: startCall function that shows status then calls callAdmin ====
+        function startCall() {
+            console.log('=== startCall() clicked ===');
+            
+            // Show connecting status
+            showConnectionStatus('Connecting...', 'connecting');
+            
+            // Start monitoring for call connection
+            monitorCallConnection();
+            
+            // Call the admin
+            if (typeof callAdmin === 'function') {
+                console.log('Calling admin...');
+                callAdmin();
+            } else {
+                console.error('callAdmin function not available');
+                UIManager.showError('Call function not available');
+                // Hide status after a moment
+                setTimeout(() => {
+                    hideConnectionStatus();
+                    stopMonitoring();
+                }, 1000);
+            }
+        }
+        
         // Run cache clearing on page load
         window.addEventListener('load', function() {
             console.log('Script loading order check - main functions available:');
             console.log('  - showConnectionStatus:', typeof showConnectionStatus);
             console.log('  - statusBridge:', typeof statusBridge);
             console.log('  - callAdmin:', typeof callAdmin);
+            console.log('  - startCall:', typeof startCall);
             console.log('  - UIManager:', typeof UIManager);
             console.log('  - CONFIG:', typeof CONFIG);
             
@@ -881,41 +907,6 @@
                 alert('ERROR: connectionStatus element not found in DOM!');
             }
         }
-        
-        // ==== MODIFIED: Hook callAdmin to show status ====
-        // Wait for main.js to load and then wrap callAdmin
-        function setupCallHooks() {
-            console.log('Setting up call hooks...');
-            
-            if (typeof callAdmin !== 'undefined') {
-                // Store original callAdmin
-                const originalCallAdmin = callAdmin;
-                // Wrap it to show status
-                window.callAdmin = function() {
-                    console.log('callAdmin wrapped - showing status');
-                    if (window.showConnectionStatus) {
-                        window.showConnectionStatus('Connecting...', 'connecting');
-                    }
-                    return originalCallAdmin();
-                };
-                console.log('✓ callAdmin hook installed');
-            }
-            
-            if (typeof callUser !== 'undefined') {
-                const originalCallUser = callUser;
-                window.callUser = function(username, socketId) {
-                    console.log('callUser wrapped - showing status');
-                    if (window.showConnectionStatus) {
-                        window.showConnectionStatus('Connecting...', 'connecting');
-                    }
-                    return originalCallUser(username, socketId);
-                };
-                console.log('✓ callUser hook installed');
-            }
-        }
-        
-        // Wait for main.js to load, then setup hooks
-        setTimeout(setupCallHooks, 1000);
         
         // ==== MODIFIED: Monitor when hangup button becomes active (call connected) ====
         function monitorCallConnection() {
