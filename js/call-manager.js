@@ -1,5 +1,9 @@
 // js/call-manager.js - MINIMAL FIX VERSION
 const CallManager = {
+    // Add audio element for notification sound
+    notificationAudio: null,
+    notificationInterval: null,
+    
     async callUser(userToCall, socketToCall) {
         if (CONFIG.isInCall || CONFIG.isProcessingAnswer) {
             UIManager.showError('Already in a call');
@@ -65,8 +69,30 @@ const CallManager = {
         CONFIG.incomingCallFrom = data.callerName;
         CONFIG.isInitiator = false;
         
-        // Pass the display name from the data if available, otherwise use callerName
-        const displayName = data.callerDisplayName || data.callerName;
+        // Format the display name
+        let displayName = data.callerName;
+        
+        // Special case for admin (access code "1")
+        if (displayName === '1') {
+            displayName = 'Administrator';
+        }
+        // For other numeric codes, check if we know the display name
+        else if (/^\d+$/.test(displayName) && CONFIG.myId && CONFIG.myUsername) {
+            // If the caller is the admin and we know the admin socket ID
+            if (CONFIG.adminSocketId && data.callerSocketId === CONFIG.adminSocketId) {
+                displayName = 'Administrator';
+            }
+            // Otherwise use a generic format
+            else {
+                displayName = `User ${displayName}`;
+            }
+        }
+        
+        // Fallback to checking for callerDisplayName if server provides it
+        if (data.callerDisplayName) {
+            displayName = data.callerDisplayName;
+        }
+        
         this.showIncomingCallNotification(displayName);
         UIManager.updateCallButtons();
     },
@@ -103,13 +129,18 @@ const CallManager = {
         
         document.body.appendChild(notification);
         
+        // === ADDED: Start playing notification sound ===
+        this.startNotificationSound();
+        
         // Add handlers
         document.getElementById('accept-btn').onclick = () => {
+            this.stopNotificationSound();
             notification.remove();
             this.answerCall();
         };
         
         document.getElementById('reject-btn').onclick = () => {
+            this.stopNotificationSound();
             notification.remove();
             this.rejectCall();
         };
@@ -117,10 +148,126 @@ const CallManager = {
         // Auto-remove after 30 seconds
         setTimeout(() => {
             if (document.body.contains(notification)) {
+                this.stopNotificationSound();
                 notification.remove();
                 this.rejectCall();
             }
         }, 30000);
+    },
+    
+    // === NEW: Start notification sound ===
+    startNotificationSound() {
+        // Create audio element if it doesn't exist
+        if (!this.notificationAudio) {
+            this.notificationAudio = new Audio();
+            
+            // Create a subtle bell tone using Web Audio API for better compatibility
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(800, audioContext.currentTime); // A5 note
+                oscillator.frequency.setValueAtTime(1000, audioContext.currentTime + 0.1); // B5 note
+                
+                gainNode.gain.setValueAtTime(0.1, audioContext.currentTime); // Low volume
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+                
+                oscillator.start();
+                oscillator.stop(audioContext.currentTime + 0.5);
+                
+                // Create a MediaStream from the oscillator
+                const destination = audioContext.createMediaStreamDestination();
+                oscillator.connect(destination);
+                
+                // Convert to blob and URL for the Audio element
+                const mediaRecorder = new MediaRecorder(destination.stream);
+                const chunks = [];
+                
+                mediaRecorder.ondataavailable = e => chunks.push(e.data);
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'audio/ogg; codecs=opus' });
+                    const url = URL.createObjectURL(blob);
+                    this.notificationAudio.src = url;
+                };
+                
+                mediaRecorder.start();
+                setTimeout(() => mediaRecorder.stop(), 500);
+                
+            } catch (error) {
+                console.log('Web Audio API not available, using fallback sound:', error);
+                
+                // Fallback: Base64 encoded simple bell sound
+                const bellSound = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZ3620YQQAAAAAAA==";
+                this.notificationAudio.src = bellSound;
+            }
+            
+            this.notificationAudio.loop = true;
+            this.notificationAudio.volume = 0.3; // 30% volume for subtlety
+        }
+        
+        // Play the sound
+        this.notificationAudio.play().catch(e => {
+            console.log('Notification sound play failed, using beep fallback:', e);
+            this.startBeepFallback();
+        });
+        
+        // Set interval to repeat sound every 2 seconds
+        this.notificationInterval = setInterval(() => {
+            if (this.notificationAudio) {
+                this.notificationAudio.currentTime = 0;
+                this.notificationAudio.play().catch(e => console.log('Notification sound replay failed:', e));
+            }
+        }, 2000);
+    },
+    
+    // === NEW: Simple beep fallback using Web Audio ===
+    startBeepFallback() {
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Create a beep sound
+            const playBeep = () => {
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.type = 'sine';
+                oscillator.frequency.value = 800;
+                
+                gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+                
+                oscillator.start();
+                oscillator.stop(audioContext.currentTime + 0.5);
+            };
+            
+            // Play beep immediately and then every 2 seconds
+            playBeep();
+            this.notificationInterval = setInterval(playBeep, 2000);
+            
+        } catch (error) {
+            console.log('Beep fallback also failed:', error);
+        }
+    },
+    
+    // === NEW: Stop notification sound ===
+    stopNotificationSound() {
+        if (this.notificationAudio) {
+            this.notificationAudio.pause();
+            this.notificationAudio.currentTime = 0;
+        }
+        
+        if (this.notificationInterval) {
+            clearInterval(this.notificationInterval);
+            this.notificationInterval = null;
+        }
     },
     
     async answerCall() {
@@ -175,6 +322,9 @@ const CallManager = {
         if (typeof hideConnectionStatus !== 'undefined') {
             hideConnectionStatus();
         }
+        
+        // Stop notification sound
+        this.stopNotificationSound();
         
         if (CONFIG.targetSocketId) {
             WebSocketClient.sendToServer({
@@ -276,6 +426,9 @@ const CallManager = {
     
     cleanupCall() {
         console.log('Cleaning up call...');
+        
+        // Stop any notification sound
+        this.stopNotificationSound();
         
         CONFIG.isProcessingAnswer = false;
         
