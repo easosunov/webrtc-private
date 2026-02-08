@@ -1,4 +1,4 @@
-// js/webrtc-core.js - CLEAN WORKING VERSION
+// js/webrtc-core.js
 const WebRTCManager = {
     createPeerConnection() {
         console.log('🔗 Creating peer connection...');
@@ -9,6 +9,7 @@ const WebRTCManager = {
                 { urls: "stun:stun1.l.google.com:19302" }
             ],
             iceCandidatePoolSize: 10,
+            // Audio-specific optimizations
             sdpSemantics: 'unified-plan',
             bundlePolicy: 'max-bundle',
             rtcpMuxPolicy: 'require'
@@ -16,13 +17,13 @@ const WebRTCManager = {
         
         CONFIG.peerConnection = new RTCPeerConnection(config);
         
-        // Initialize remote stream
+        // CRITICAL: Initialize remote stream
         CONFIG.remoteStream = new MediaStream();
         
-        // Set up remote video element
+        // Set up remote video element - ENSURE AUDIO IS NOT MUTED
         if (CONFIG.elements.remoteVideo) {
             CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
-            CONFIG.elements.remoteVideo.muted = false;
+            CONFIG.elements.remoteVideo.muted = false;  // THIS IS KEY FOR AUDIO
             CONFIG.elements.remoteVideo.volume = 1.0;
         }
         
@@ -40,10 +41,11 @@ const WebRTCManager = {
         if (CONFIG.localStream && CONFIG.hasMediaPermissions) {
             const audioTracks = CONFIG.localStream.getAudioTracks();
             
-            // Add audio tracks
+            // Add audio tracks FIRST (most important)
             if (audioTracks.length > 0) {
                 audioTracks.forEach(track => {
                     try {
+                        // Ensure audio track is enabled
                         track.enabled = true;
                         CONFIG.peerConnection.addTrack(track, CONFIG.localStream);
                         console.log(`✅ Added AUDIO track: ${track.id.substring(0, 10)}...`);
@@ -66,7 +68,7 @@ const WebRTCManager = {
             });
         }
         
-        // Handle incoming tracks
+        // Handle incoming tracks - FIXED VERSION
         CONFIG.peerConnection.ontrack = (event) => {
             console.log('🎬 ontrack event:', event.track.kind);
             
@@ -74,9 +76,11 @@ const WebRTCManager = {
                 // Add track to our remote stream
                 CONFIG.remoteStream.addTrack(event.track);
                 
-                // Update the remote video element
+                // CRITICAL: Update the remote video element
                 if (CONFIG.elements.remoteVideo) {
+                    // Ensure we're using the correct stream
                     CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
+                    // ENSURE AUDIO IS NOT MUTED
                     CONFIG.elements.remoteVideo.muted = false;
                     
                     // Try to play
@@ -84,6 +88,7 @@ const WebRTCManager = {
                         .then(() => {
                             console.log(`▶️ Remote ${event.track.kind} playing`);
                             
+                            // Check audio state
                             if (event.track.kind === 'audio') {
                                 console.log('🔊 AUDIO TRACK CONNECTED!');
                                 setTimeout(() => {
@@ -279,41 +284,6 @@ const WebRTCManager = {
         });
         
         CONFIG.iceCandidatesQueue = [];
-    },
-    
-    // SIMPLE replaceMediaTracks method
-    replaceMediaTracks(newStream) {
-        if (!CONFIG.peerConnection) {
-            console.error('No peer connection to replace tracks');
-            return;
-        }
-        
-        console.log('Replacing media tracks...');
-        
-        // Get current senders
-        const senders = CONFIG.peerConnection.getSenders();
-        
-        // Replace each track
-        newStream.getTracks().forEach(track => {
-            const sender = senders.find(s => s.track && s.track.kind === track.kind);
-            if (sender) {
-                console.log(`Replacing ${track.kind} track`);
-                sender.replaceTrack(track);
-            }
-        });
-        
-        // Update local stream reference
-        if (CONFIG.localStream) {
-            CONFIG.localStream.getTracks().forEach(t => t.stop());
-        }
-        CONFIG.localStream = newStream;
-        
-        // Update local video display
-        if (CONFIG.elements.localVideo) {
-            CONFIG.elements.localVideo.srcObject = newStream;
-        }
-        
-        console.log('Media tracks replaced successfully');
     },
     
     // Keep your existing debug function
