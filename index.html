@@ -455,7 +455,7 @@
             <div class="user-line" id="userLine-admin">
                 <span class="username">Administrator</span>
                 <!-- Call and Hang Up buttons only -->
-                <button class="btn-call" onclick="callAdmin()">Call</button>
+                <button class="btn-call" onclick="startCallWithBeeper()">Call</button>
                 <button class="btn-hangup" onclick="hangup()" disabled>Hang Up<span class="shortcut-hint">(Esc)</span></button>
             </div>
         </div>
@@ -494,7 +494,7 @@
         <source src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZ3620YQQAAAAAAA==" type="audio/wav">
     </audio>
     
-    <!-- Connection beeper (quiet phone dial tone) - Much shorter, efficient version -->
+    <!-- Connection beeper (quiet phone dial tone) -->
     <audio id="connectionBeeper" preload="auto" loop>
         <source src="data:audio/wav;base64,UklGRnoAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=" type="audio/wav">
     </audio>
@@ -585,13 +585,30 @@
         function startConnectionBeeper() {
             const beeper = document.getElementById('connectionBeeper');
             if (beeper) {
-                // Set volume to low (20%)
-                beeper.volume = 0.2;
-                // Start playing
-                beeper.play().catch(e => {
-                    console.log('Beeper play failed (user may need to interact first):', e);
-                });
-                console.log('Connection beeper started');
+                try {
+                    // Set volume to low (20%)
+                    beeper.volume = 0.2;
+                    // Start playing
+                    const playPromise = beeper.play();
+                    
+                    if (playPromise !== undefined) {
+                        playPromise.then(() => {
+                            console.log('Connection beeper started');
+                        }).catch(e => {
+                            console.log('Beeper autoplay prevented, trying muted:', e.message);
+                            // Try muted play and then unmute
+                            beeper.muted = true;
+                            beeper.play().then(() => {
+                                beeper.muted = false;
+                                console.log('Beeper started (was muted)');
+                            }).catch(e2 => {
+                                console.log('Beeper failed completely:', e2.message);
+                            });
+                        });
+                    }
+                } catch (error) {
+                    console.log('Beeper error:', error);
+                }
             }
         }
         
@@ -609,35 +626,28 @@
             }
         }
         
-        // Modified call functions with beeper
-        function callAdminWithBeeper() {
-            // Start the connection beeper
+        // Call function with beeper
+        function startCallWithBeeper() {
+            // Start the connection beeper FIRST (while we have user interaction)
             startConnectionBeeper();
-            // Call the original function
-            callAdmin();
-        }
-        
-        function hangupWithBeeper() {
-            // Stop the connection beeper
-            stopConnectionBeeper();
-            // Call the original function
-            hangup();
-        }
-        
-        // Override the original call functions
-        window.callAdmin = function() {
-            // Check if admin is available
-            if (!CONFIG.adminSocketId) {
+            
+            // Start monitoring for call connection
+            monitorCallConnection();
+            
+            // Then call the admin
+            if (CONFIG.adminSocketId) {
+                // Small delay to ensure beeper starts
+                setTimeout(() => {
+                    if (typeof callAdmin === 'function') {
+                        callAdmin();
+                    }
+                }, 50);
+            } else {
                 UIManager.showError('Admin is offline');
-                return;
+                // Stop beeper after a moment if admin is offline
+                setTimeout(stopConnectionBeeper, 1000);
             }
-            
-            // Start connection beeper
-            startConnectionBeeper();
-            
-            // Call the original function from call-manager
-            CallManager.callUser('admin', CONFIG.adminSocketId);
-        };
+        }
         
         // Monitor when hangup button becomes active (call connected)
         function monitorCallConnection() {
@@ -655,26 +665,38 @@
             // Also stop checking after 60 seconds (call timeout)
             setTimeout(() => {
                 clearInterval(checkInterval);
+                // Stop beeper if call times out
+                stopConnectionBeeper();
             }, 60000);
         }
         
-        // Hook into the original callUser function to start monitoring
+        // Hook into existing call functions for admin calling users
         const originalCallUser = window.callUser;
-        if (originalCallUser) {
+        if (originalCallUser && typeof originalCallUser === 'function') {
             window.callUser = function(username, socketId) {
+                // Start beeper for admin calls too
                 startConnectionBeeper();
+                // Start monitoring for call connection
                 monitorCallConnection();
                 return originalCallUser(username, socketId);
             };
         }
         
-        // Also hook into callAdmin function if it's redefined elsewhere
-        const originalGlobalCallAdmin = window.callAdmin;
-        if (originalGlobalCallAdmin && originalGlobalCallAdmin.toString() !== window.callAdmin.toString()) {
-            window.callAdmin = function() {
-                startConnectionBeeper();
-                monitorCallConnection();
-                return originalGlobalCallAdmin();
+        // Ensure hangup stops the beeper
+        const originalHangup = window.hangup;
+        if (originalHangup && typeof originalHangup === 'function') {
+            window.hangup = function() {
+                stopConnectionBeeper();
+                return originalHangup();
+            };
+        }
+        
+        // Also stop beeper on logout
+        const originalLogout = window.logout;
+        if (originalLogout && typeof originalLogout === 'function') {
+            window.logout = function() {
+                stopConnectionBeeper();
+                return originalLogout();
             };
         }
         
