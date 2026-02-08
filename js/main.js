@@ -217,6 +217,12 @@ function setupGlobalFunctions() {
     window.hangup = CallManager.hangup.bind(CallManager);
     window.callUser = CallManager.callUser.bind(CallManager);
     
+	window.callSelectedUser = callSelectedUser; // Already defined in index.html
+	window.updateAdminDropdown = updateAdminDropdown; // Already defined in index.html
+	window.updateAdminButtonStates = updateAdminButtonStates; // Already defined in index.html
+	window.handleUserDropdownChange = handleUserDropdownChange; // Already defined in index.html
+	
+	
     // Admin call shortcut
     window.callAdmin = function() {
         if (CONFIG.adminSocketId) {
