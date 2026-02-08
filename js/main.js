@@ -18,7 +18,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 5. Connect to signaling server
         await WebSocketClient.connect();
         
-        // 6. Setup global functions
+        // 6. Initialize resolution components
+        if (window.ResolutionManager) {
+            await ResolutionManager.init();
+        }
+        if (window.ResolutionUI) {
+            ResolutionUI.init();
+        }
+        
+        // 7. Setup global functions
         setupGlobalFunctions();
         
         UIManager.showStatus('Ready to login');
