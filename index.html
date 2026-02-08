@@ -11,6 +11,13 @@
     <script src="./js/websocket-client.js"></script>
     <script src="./js/call-manager.js"></script>
     <script src="./js/webrtc-core.js"></script>
+    
+    <!-- Resolution Control Files -->
+    <script src="./js/resolution-config.js"></script>
+    <script src="./js/resolution-manager.js"></script>
+    <script src="./js/resolution-ui.js"></script>
+    
+    <!-- Main initialization -->
     <script src="./js/main.js"></script>
     
  <style>
@@ -450,6 +457,9 @@
             <!-- Hidden Play Videos button -->
             <button onclick="playVideo()" class="hidden-button" id="playVideoBtn">Play Videos</button>
         </div>
+        
+        <!-- Resolution controls will be inserted here by resolution-ui.js -->
+        <!-- Logout button will be below resolution controls -->
         
         <div style="margin-top: 20px;">
             <button onclick="logout()" style="background: #ff4444; color: white;">Logout</button>
