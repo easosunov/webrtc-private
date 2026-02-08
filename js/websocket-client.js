@@ -1,4 +1,4 @@
-// js/websocket-client.js - COMPLETE FIXED VERSION
+// js/websocket-client.js - UPDATED VERSION with correct method names
 const WebSocketClient = {
     connect() {
         return new Promise((resolve, reject) => {
@@ -94,7 +94,6 @@ const WebSocketClient = {
                     }
                     break;
                     
-                // ADMIN STATUS MESSAGES - CRITICAL ADDITIONS
                 case 'admin-online':
                     this.handleAdminOnline(message);
                     break;
@@ -103,8 +102,9 @@ const WebSocketClient = {
                     this.handleAdminOffline(message);
                     break;
                     
+                // FIXED: Use the correct method name
                 case 'call-initiated':
-                    CallManager.handleIncomingCall(message);
+                    CallManager.handleCallInitiated(message);
                     break;
                     
                 case 'call-initiated-confirm':
@@ -123,10 +123,15 @@ const WebSocketClient = {
                     CallManager.handleCallEnded(message);
                     break;
                     
+                // FIXED: Use WebRTCManager instead of CallManager for signaling
                 case 'offer':
                 case 'answer':
                 case 'ice-candidate':
-                    CallManager.handleSignalingMessage(message);
+                    if (window.WebRTCManager) {
+                        WebRTCManager.handleSignalingMessage(message);
+                    } else {
+                        console.error('WebRTCManager not found');
+                    }
                     break;
                     
                 case 'error':
@@ -147,7 +152,6 @@ const WebSocketClient = {
         CONFIG.mySocketId = message.socketId;
     },
     
-    // NEW: Handle admin online notification
     handleAdminOnline(message) {
         console.log(`📢 Admin is online: ${message.adminUsername}`);
         CONFIG.adminSocketId = message.adminSocketId;
@@ -161,7 +165,6 @@ const WebSocketClient = {
         }
     },
     
-    // NEW: Handle admin offline notification
     handleAdminOffline(message) {
         console.log('📢 Admin is offline');
         CONFIG.adminSocketId = null;
