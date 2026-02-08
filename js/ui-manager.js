@@ -23,6 +23,13 @@ const UIManager = {
             // User list element
             userList: document.getElementById('userList'),
             
+            // NEW: Admin dropdown elements
+            userDropdown: document.getElementById('userDropdown'),
+            selectedUserDisplay: document.getElementById('selectedUserDisplay'),
+            selectedUserName: document.getElementById('selectedUserName'),
+            adminCallBtn: document.getElementById('adminCallBtn'),
+            adminHangupBtn: document.getElementById('adminHangupBtn'),
+            
             // Access code input (if exists)
             accessCodeInput: document.getElementById('hiddenAccessCode'),
             
@@ -76,38 +83,15 @@ const UIManager = {
     },
     
     updateUsersList(users) {
-        // Only admin should see user list
+        // Only admin should update user list
         if (!CONFIG.isAdmin) return;
         
-        // If userList element doesn't exist yet, try to find it
-        if (!CONFIG.elements.userList) {
-            CONFIG.elements.userList = document.getElementById('userList');
-            if (!CONFIG.elements.userList) {
-                console.warn('userList element not found');
-                return;
-            }
+        console.log('Updating admin user dropdown with', users?.length || 0, 'users');
+        
+        // Call the new dropdown update function (defined in index.html)
+        if (typeof window.updateAdminDropdown === 'function') {
+            window.updateAdminDropdown(users);
         }
-        
-        const userList = CONFIG.elements.userList;
-        userList.innerHTML = '';
-        
-        if (!users || users.length === 0) {
-            userList.innerHTML = '<div class="user-line"><span class="username">No users online</span></div>';
-            return;
-        }
-        
-        users.forEach(user => {
-            if (user.id === CONFIG.myId) return;
-            
-            const div = document.createElement('div');
-            div.className = 'user-line';
-            div.innerHTML = `
-                <span class="username">${user.username} ${user.isAdmin ? '(Admin)' : ''}</span>
-                <button class="btn-call" onclick="callUser('${user.username}', '${user.socketId}')">Call</button>
-                <button class="btn-hangup" onclick="hangup()" disabled>Hang Up</button>
-            `;
-            userList.appendChild(div);
-        });
         
         this.updateCallButtons();
     },
@@ -137,23 +121,9 @@ const UIManager = {
             }
         }
         
-        // For admin view (admin calling users)
-        if (CONFIG.isAdmin && CONFIG.elements.userList) {
-            const userLines = CONFIG.elements.userList.querySelectorAll('.user-line');
-            userLines.forEach(line => {
-                const callBtn = line.querySelector('.btn-call');
-                const hangupBtn = line.querySelector('.btn-hangup');
-                
-                if (callBtn) {
-                    callBtn.disabled = CONFIG.isInCall;
-                    callBtn.className = CONFIG.isInCall ? 'btn-call' : 'btn-call active';
-                }
-                
-                if (hangupBtn) {
-                    hangupBtn.disabled = !CONFIG.isInCall;
-                    hangupBtn.className = CONFIG.isInCall ? 'btn-hangup active' : 'btn-hangup';
-                }
-            });
+        // For admin view - update admin buttons
+        if (CONFIG.isAdmin && typeof window.updateAdminButtonStates === 'function') {
+            window.updateAdminButtonStates();
         }
     },
     
