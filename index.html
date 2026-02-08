@@ -486,17 +486,14 @@
             <button onclick="logout()" style="background: #ff4444; color: white;">Logout<span class="shortcut-hint">(Ctrl+Shift+L)</span></button>
             <!-- Hidden Debug button -->
             <button onclick="debug()" class="hidden-button">Debug</button>
+            <!-- Test Beeper button -->
+            <button onclick="testBeeper()" style="background: #2196F3; color: white; margin-left: 10px;">Test Beeper</button>
         </div>
     </div>
     
     <!-- Hidden ringtone -->
     <audio id="ringtone" loop preload="auto">
         <source src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZ3620YQQAAAAAAA==" type="audio/wav">
-    </audio>
-    
-    <!-- Connection beeper (quiet phone dial tone) -->
-    <audio id="connectionBeeper" preload="auto" loop>
-        <source src="data:audio/wav;base64,UklGRnoAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=" type="audio/wav">
     </audio>
     
     <script>
@@ -579,57 +576,87 @@
             }
         }
         
-        // Connection beeper functions
-        let beeperInterval = null;
+        // Connection beeper using Web Audio API
+        let beeperAudioContext = null;
+        let beeperOscillator = null;
+        let beeperGainNode = null;
         
         function startConnectionBeeper() {
-            const beeper = document.getElementById('connectionBeeper');
-            if (beeper) {
-                try {
-                    // Set volume to low (20%)
-                    beeper.volume = 0.2;
-                    // Start playing
-                    const playPromise = beeper.play();
-                    
-                    if (playPromise !== undefined) {
-                        playPromise.then(() => {
-                            console.log('Connection beeper started');
-                        }).catch(e => {
-                            console.log('Beeper autoplay prevented, trying muted:', e.message);
-                            // Try muted play and then unmute
-                            beeper.muted = true;
-                            beeper.play().then(() => {
-                                beeper.muted = false;
-                                console.log('Beeper started (was muted)');
-                            }).catch(e2 => {
-                                console.log('Beeper failed completely:', e2.message);
-                            });
-                        });
-                    }
-                } catch (error) {
-                    console.log('Beeper error:', error);
+            try {
+                // Create audio context if it doesn't exist
+                if (!beeperAudioContext) {
+                    beeperAudioContext = new (window.AudioContext || window.webkitAudioContext)();
                 }
+                
+                // Stop any existing beeper
+                stopConnectionBeeper();
+                
+                // Create oscillator for the beep sound
+                beeperOscillator = beeperAudioContext.createOscillator();
+                beeperGainNode = beeperAudioContext.createGain();
+                
+                // Configure the beep sound
+                beeperOscillator.type = 'sine';      // Smooth tone
+                beeperOscillator.frequency.value = 350; // 350Hz - pleasant dial tone frequency
+                
+                // Set volume to 20% (quiet)
+                beeperGainNode.gain.value = 0.2;
+                
+                // Connect oscillator -> gain -> output
+                beeperOscillator.connect(beeperGainNode);
+                beeperGainNode.connect(beeperAudioContext.destination);
+                
+                // Start the beep
+                beeperOscillator.start();
+                
+                console.log('Connection beeper started (350Hz sine wave)');
+                return true;
+            } catch (error) {
+                console.log('Could not start beeper:', error);
+                return false;
             }
         }
         
         function stopConnectionBeeper() {
-            const beeper = document.getElementById('connectionBeeper');
-            if (beeper) {
-                beeper.pause();
-                beeper.currentTime = 0;
+            try {
+                if (beeperOscillator) {
+                    beeperOscillator.stop();
+                    beeperOscillator.disconnect();
+                    beeperOscillator = null;
+                }
+                if (beeperGainNode) {
+                    beeperGainNode.disconnect();
+                    beeperGainNode = null;
+                }
                 console.log('Connection beeper stopped');
+            } catch (error) {
+                console.log('Error stopping beeper:', error);
             }
-            
-            if (beeperInterval) {
-                clearInterval(beeperInterval);
-                beeperInterval = null;
+        }
+        
+        // Test function to verify audio works
+        function testBeeper() {
+            console.log('Testing beeper...');
+            const started = startConnectionBeeper();
+            if (started) {
+                setTimeout(() => {
+                    stopConnectionBeeper();
+                    console.log('Beeper test complete - you should have heard a 1-second beep');
+                }, 1000);
+            } else {
+                console.log('Beeper test failed - check browser console for errors');
+                alert('Beeper test failed. Check browser console for errors.');
             }
         }
         
         // Call function with beeper
         function startCallWithBeeper() {
             // Start the connection beeper FIRST (while we have user interaction)
-            startConnectionBeeper();
+            const beeperStarted = startConnectionBeeper();
+            
+            if (!beeperStarted) {
+                console.log('Note: Beeper could not start, continuing call anyway');
+            }
             
             // Start monitoring for call connection
             monitorCallConnection();
