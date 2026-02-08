@@ -483,7 +483,7 @@
         <!-- Logout button will be below resolution controls -->
         
         <div style="margin-top: 20px;">
-            <button onclick="logout()" style="background: #ff4444; color: white;">Logout<span class="shortcut-hint">(Alt+Esc)</span></button>
+            <button onclick="logout()" style="background: #ff4444; color: white;">Logout<span class="shortcut-hint">(Ctrl+Shift+L)</span></button>
             <!-- Hidden Debug button -->
             <button onclick="debug()" class="hidden-button">Debug</button>
         </div>
@@ -711,7 +711,7 @@
             }
             
             // ESC key for hangup (only when in call)
-            if (e.key === 'Escape' && !e.altKey) {
+            if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
                 // Check if hangup button is enabled (in call)
                 const hangupBtn = document.querySelector('.btn-hangup.active');
                 if (hangupBtn && !hangupBtn.disabled) {
@@ -730,8 +730,8 @@
                 }
             }
             
-            // Alt+Esc for logout (always available when logged in)
-            if (e.key === 'Escape' && e.altKey) {
+            // Ctrl+Shift+L for logout (always available when logged in)
+            if (e.key.toLowerCase() === 'l' && e.ctrlKey && e.shiftKey && !e.altKey) {
                 e.preventDefault();
                 e.stopPropagation();
                 
