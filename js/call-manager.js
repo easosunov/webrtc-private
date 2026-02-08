@@ -1,4 +1,4 @@
-// js/call-manager.js - ORIGINAL WORKING VERSION
+// js/call-manager.js - COMPLETE VERSION
 const CallManager = {
     async callUser(userToCall, socketToCall) {
         if (CONFIG.isInCall || CONFIG.isProcessingAnswer) {
