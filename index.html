@@ -2,6 +2,12 @@
 <html>
 <head>
     <title>Private WebRTC Communicator</title>
+    <!-- ADD THESE 4 LINES - Anti-cache meta tags -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     
     <!-- Modular JavaScript files -->
@@ -19,6 +25,36 @@
     
     <!-- Main initialization -->
     <script src="./js/main.js"></script>
+    
+    <!-- ADD THIS INLINE SCRIPT - Cache buster for Android -->
+    <script>
+        // Android Cache Buster - Runs BEFORE anything else loads
+        (function() {
+            console.log('Android Cache Buster v1');
+            
+            // Skip if already busted in this session
+            if (sessionStorage.getItem('cacheBusted')) {
+                console.log('Cache already busted this session');
+                return;
+            }
+            
+            // Check if we need to add cache busting parameter
+            const url = window.location.href;
+            const hasBuster = url.includes('_cb=') || url.includes('t=') || url.includes('nocache');
+            
+            if (!hasBuster) {
+                sessionStorage.setItem('cacheBusted', 'true');
+                const newUrl = url.split('?')[0] + 
+                    (url.includes('?') ? '&' : '?') + 
+                    '_cb=' + Date.now() + 
+                    '&t=' + performance.now() + 
+                    '&android_nocache=1';
+                
+                console.log('Busting Android cache, redirecting to:', newUrl);
+                window.location.replace(newUrl);
+            }
+        })();
+    </script>
     
  <style>
     * {
@@ -320,7 +356,7 @@
         border-radius: 5px;
         border-left: 4px solid #2196F3;
         font-weight: bold;
-        color: #1976D2;
+        color: #1976D32;
         text-align: center;
         display: none;
         font-size: 0.9rem; /* Slightly smaller font */
@@ -400,7 +436,7 @@
         }
     }
 </style>
-	
+    
 </head>
 <body>
     <div id="login">
@@ -529,6 +565,45 @@
     </audio>
     
     <script>
+        // Android cache control - ADD THIS FUNCTION
+        function clearAndroidCache() {
+            // Clear service workers
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                    registrations.forEach(function(registration) {
+                        registration.unregister();
+                    });
+                });
+            }
+            
+            // Clear cache API
+            if ('caches' in window) {
+                caches.keys().then(function(cacheNames) {
+                    cacheNames.forEach(function(cacheName) {
+                        caches.delete(cacheName);
+                    });
+                });
+            }
+            
+            return true;
+        }
+        
+        // Run cache clearing on page load
+        window.addEventListener('load', function() {
+            if (/Android/.test(navigator.userAgent)) {
+                console.log('Android detected, clearing caches');
+                clearAndroidCache();
+                
+                // Add cache busting to all script tags
+                document.querySelectorAll('script[src]').forEach(function(script) {
+                    const src = script.getAttribute('src');
+                    if (src && !src.includes('?')) {
+                        script.setAttribute('src', src + '?t=' + Date.now());
+                    }
+                });
+            }
+        });
+        
         // Keypad functionality
         let accessCode = '';
         
