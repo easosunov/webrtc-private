@@ -1,133 +1,177 @@
-// js/websocket-client.js - COMPLETE VERSION
+// js/websocket-client.js - COMPLETE FIXED VERSION
 const WebSocketClient = {
     connect() {
-        console.log('Connecting:', CONFIG.wsUrl);
-        
-        CONFIG.ws = new WebSocket(CONFIG.wsUrl);
-        
-        CONFIG.ws.onopen = () => {
-            console.log('✅ WebSocket connected');
-            UIManager.showStatus('Connected to server');
-        };
-        
-        CONFIG.ws.onmessage = (event) => {
+        return new Promise((resolve, reject) => {
+            console.log('Connecting:', CONFIG.wsUrl);
+            
             try {
-                const data = JSON.parse(event.data);
-                console.log('📨 Received:', data.type, data);
-                this.handleMessage(data);
+                this.ws = new WebSocket(CONFIG.wsUrl);
+                CONFIG.ws = this.ws;
+                
+                this.ws.onopen = () => {
+                    console.log('✅ WebSocket connected');
+                    UIManager.showStatus('Connected to server');
+                    resolve();
+                };
+                
+                this.ws.onmessage = (event) => {
+                    this.handleMessage(event.data);
+                };
+                
+                this.ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    UIManager.showError('Connection error');
+                    reject(error);
+                };
+                
+                this.ws.onclose = () => {
+                    console.log('WebSocket disconnected');
+                    if (!CONFIG.isInCall) {
+                        UIManager.showStatus('Disconnected from server');
+                    }
+                };
+                
+                // Timeout connection attempt
+                setTimeout(() => {
+                    if (this.ws.readyState !== WebSocket.OPEN) {
+                        reject(new Error('Connection timeout'));
+                    }
+                }, 10000);
+                
             } catch (error) {
-                console.error('Parse error:', error);
+                console.error('Failed to create WebSocket:', error);
+                reject(error);
             }
-        };
-        
-        CONFIG.ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            UIManager.showStatus('Connection error');
-        };
-        
-        CONFIG.ws.onclose = () => {
-            console.log('WebSocket closed');
-            UIManager.showStatus('Disconnected');
-            setTimeout(() => this.connect(), 3000);
-        };
-    },
-    
-    handleMessage(data) {
-        if (!data || !data.type) return;
-        
-        console.log('Handling:', data.type);
-        
-        switch (data.type) {
-            case 'connected':
-                console.log('Socket ID:', data.socketId);
-                break;
-                
-            case 'login-success':
-                AuthManager.handleLoginSuccess(data);
-                break;
-                
-            case 'login-error':
-                UIManager.showError('Login error: ' + data.message);
-                break;
-                
-            case 'user-list':
-                CONFIG.connectedUsers = data.users || [];
-                UIManager.updateUsersList(CONFIG.connectedUsers);
-                break;
-                
-            case 'user-connected':
-                CONFIG.connectedUsers.push(data.user);
-                UIManager.updateUsersList(CONFIG.connectedUsers);
-                break;
-                
-            case 'user-disconnected':
-                CONFIG.connectedUsers = CONFIG.connectedUsers.filter(u => u.id !== data.userId);
-                UIManager.updateUsersList(CONFIG.connectedUsers);
-                break;
-                
-            case 'admin-online':
-                CONFIG.adminSocketId = data.adminSocketId;
-                console.log('✅ Admin online:', CONFIG.adminSocketId);
-                UIManager.showStatus('Admin online - ready to call');
-                break;
-                
-            case 'call-initiated':
-                CallManager.handleCallInitiated(data);
-                break;
-                
-            case 'call-initiated-confirm':
-                console.log('Call initiated confirmed for:', data.targetName);
-                UIManager.showStatus(`Calling ${data.targetName || 'user'}...`);
-                break;
-                
-            case 'call-accepted':
-                CallManager.handleCallAccepted(data);
-                break;
-                
-            case 'call-accepted-confirm':
-                console.log('Call accept confirmed');
-                break;
-                
-            case 'call-rejected':
-                CallManager.handleCallRejected(data);
-                break;
-                
-            case 'call-ended':
-                CallManager.handleCallEnded(data);
-                break;
-                
-            case 'offer':
-                WebRTCManager.handleOffer(data);
-                break;
-                
-            case 'answer':
-                WebRTCManager.handleAnswer(data);
-                break;
-                
-            case 'ice-candidate':
-                WebRTCManager.handleIceCandidate(data);
-                break;
-                
-            case 'error':
-                console.error('Server error:', data.message);
-                if (data.message.includes('No pending call')) {
-                    CONFIG.isProcessingAnswer = false;
-                    UIManager.updateCallButtons();
-                }
-                break;
-                
-            default:
-                console.warn('Unknown message type:', data.type);
-        }
+        });
     },
     
     sendToServer(message) {
-        if (CONFIG.ws && CONFIG.ws.readyState === WebSocket.OPEN) {
-            CONFIG.ws.send(JSON.stringify(message));
-            console.log('📤 Sent:', message.type);
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            console.log('📤 Sending:', message.type, message);
+            this.ws.send(JSON.stringify(message));
+            return true;
         } else {
-            console.error('WebSocket not connected');
-            UIManager.showStatus('Connection lost');
+            console.warn('Cannot send: WebSocket not connected');
+            UIManager.showError('Not connected to server');
+            return false;
+        }
+    },
+    
+    handleMessage(data) {
+        try {
+            const message = JSON.parse(data);
+            console.log('📨 Received:', message.type, message);
+            
+            switch (message.type) {
+                case 'connected':
+                    this.handleConnected(message);
+                    break;
+                    
+                case 'login-success':
+                    AuthManager.handleLoginSuccess(message);
+                    break;
+                    
+                case 'login-error':
+                    UIManager.showError(message.message);
+                    UIManager.showStatus('Login failed');
+                    break;
+                    
+                case 'user-list':
+                    UIManager.updateUsersList(message.users);
+                    break;
+                    
+                case 'user-connected':
+                    console.log(`👤 User connected: ${message.user?.username}`);
+                    if (CONFIG.isAdmin) {
+                        setTimeout(() => this.sendToServer({ type: 'get-users' }), 100);
+                    }
+                    break;
+                    
+                case 'user-disconnected':
+                    console.log(`👤 User disconnected: ${message.username}`);
+                    if (CONFIG.isAdmin) {
+                        setTimeout(() => this.sendToServer({ type: 'get-users' }), 100);
+                    }
+                    break;
+                    
+                // ADMIN STATUS MESSAGES - CRITICAL ADDITIONS
+                case 'admin-online':
+                    this.handleAdminOnline(message);
+                    break;
+                    
+                case 'admin-offline':
+                    this.handleAdminOffline(message);
+                    break;
+                    
+                case 'call-initiated':
+                    CallManager.handleIncomingCall(message);
+                    break;
+                    
+                case 'call-initiated-confirm':
+                    UIManager.showStatus(`Calling ${message.targetName}...`);
+                    break;
+                    
+                case 'call-accepted':
+                    CallManager.handleCallAccepted(message);
+                    break;
+                    
+                case 'call-rejected':
+                    CallManager.handleCallRejected(message);
+                    break;
+                    
+                case 'call-ended':
+                    CallManager.handleCallEnded(message);
+                    break;
+                    
+                case 'offer':
+                case 'answer':
+                case 'ice-candidate':
+                    CallManager.handleSignalingMessage(message);
+                    break;
+                    
+                case 'error':
+                    UIManager.showError(message.message);
+                    break;
+                    
+                default:
+                    console.warn(`Unknown message type: ${message.type}`);
+            }
+        } catch (error) {
+            console.error('Error handling message:', error, data);
+        }
+    },
+    
+    handleConnected(message) {
+        console.log('Connected to signaling server');
+        console.log('Socket ID:', message.socketId);
+        CONFIG.mySocketId = message.socketId;
+    },
+    
+    // NEW: Handle admin online notification
+    handleAdminOnline(message) {
+        console.log(`📢 Admin is online: ${message.adminUsername}`);
+        CONFIG.adminSocketId = message.adminSocketId;
+        
+        // Update UI to show admin is available
+        UIManager.showStatus(`Admin is online`);
+        
+        // Enable call button if not in call
+        if (!CONFIG.isAdmin && !CONFIG.isInCall) {
+            UIManager.updateCallButtons();
+        }
+    },
+    
+    // NEW: Handle admin offline notification
+    handleAdminOffline(message) {
+        console.log('📢 Admin is offline');
+        CONFIG.adminSocketId = null;
+        
+        // Update UI to show admin is unavailable
+        UIManager.showStatus('Admin is offline');
+        
+        // Disable call button
+        if (!CONFIG.isAdmin) {
+            UIManager.updateCallButtons();
         }
     }
 };
