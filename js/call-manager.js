@@ -1,4 +1,4 @@
-// js/call-manager.js - COMPLETE VERSION
+// js/call-manager.js - MINIMAL FIX VERSION
 const CallManager = {
     async callUser(userToCall, socketToCall) {
         if (CONFIG.isInCall || CONFIG.isProcessingAnswer) {
@@ -171,6 +171,10 @@ const CallManager = {
     handleCallAccepted(data) {
         console.log('✅ Call accepted by:', data.calleeName);
         UIManager.showStatus('Call accepted - connecting...');
+        
+        // FIX: Set isInCall to true when call is accepted
+        CONFIG.isInCall = true;
+        UIManager.updateCallButtons();
         
         if (CONFIG.isInitiator) {
             // We are the caller, now we can send the offer
