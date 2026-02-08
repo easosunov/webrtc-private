@@ -312,6 +312,31 @@
         font-style: italic;
     }
     
+    /* Connection status */
+    .connection-status {
+        margin: 10px 0;
+        padding: 10px;
+        background: #e3f2fd;
+        border-radius: 5px;
+        border-left: 4px solid #2196F3;
+        font-weight: bold;
+        color: #1976D2;
+        text-align: center;
+        display: none;
+    }
+    
+    .connection-status.connecting {
+        background: #fff3e0;
+        border-left-color: #ff9800;
+        color: #ef6c00;
+    }
+    
+    .connection-status.connected {
+        background: #e8f5e9;
+        border-left-color: #4CAF50;
+        color: #2e7d32;
+    }
+    
     @media (max-width: 768px) {
         #localVideo {
             width: 100px !important;
@@ -470,6 +495,9 @@
         
         <div style="margin-top: 30px; border-top: 2px solid #eee; padding-top: 20px;">
             <h4>Video Call</h4>
+            <!-- Connection status display -->
+            <div id="connectionStatus" class="connection-status"></div>
+            
             <div class="video-container">
                 <video id="remoteVideo" autoplay playsinline></video>
                 <!-- Local video is draggable -->
@@ -487,7 +515,7 @@
             <!-- Hidden Debug button -->
             <button onclick="debug()" class="hidden-button">Debug</button>
             <!-- Test Beeper button -->
-            <button onclick="testBeeper()" style="background: #2196F3; color: white; margin-left: 10px;">Test Beeper</button>
+            <button onclick="testBeeperPattern()" style="background: #2196F3; color: white; margin-left: 10px;">Test Beeper Pattern</button>
         </div>
     </div>
     
@@ -576,10 +604,12 @@
             }
         }
         
-        // Connection beeper using Web Audio API
+        // Connection beeper using Web Audio API with alternating pattern
         let beeperAudioContext = null;
         let beeperOscillator = null;
         let beeperGainNode = null;
+        let beeperInterval = null;
+        let isBeeperOn = false;
         
         function startConnectionBeeper() {
             try {
@@ -591,7 +621,7 @@
                 // Stop any existing beeper
                 stopConnectionBeeper();
                 
-                // Create oscillator for the beep sound
+                // Create oscillator and gain node
                 beeperOscillator = beeperAudioContext.createOscillator();
                 beeperGainNode = beeperAudioContext.createGain();
                 
@@ -599,17 +629,32 @@
                 beeperOscillator.type = 'sine';      // Smooth tone
                 beeperOscillator.frequency.value = 350; // 350Hz - pleasant dial tone frequency
                 
-                // Set volume to 20% (quiet)
-                beeperGainNode.gain.value = 0.2;
+                // Set initial volume to 0 (off)
+                beeperGainNode.gain.value = 0;
                 
                 // Connect oscillator -> gain -> output
                 beeperOscillator.connect(beeperGainNode);
                 beeperGainNode.connect(beeperAudioContext.destination);
                 
-                // Start the beep
+                // Start the oscillator (but silent initially)
                 beeperOscillator.start();
                 
-                console.log('Connection beeper started (350Hz sine wave)');
+                // Set up alternating pattern: beep-beep-beep (on for 200ms, off for 200ms, repeat)
+                let beepCount = 0;
+                beeperInterval = setInterval(() => {
+                    if (isBeeperOn) {
+                        // Turn beep off
+                        beeperGainNode.gain.setValueAtTime(0, beeperAudioContext.currentTime);
+                        isBeeperOn = false;
+                    } else {
+                        // Turn beep on (at 20% volume)
+                        beeperGainNode.gain.setValueAtTime(0.2, beeperAudioContext.currentTime);
+                        isBeeperOn = true;
+                        beepCount++;
+                    }
+                }, 200); // 200ms on, 200ms off = 2.5 beeps per second
+                
+                console.log('Connection beeper started (alternating pattern)');
                 return true;
             } catch (error) {
                 console.log('Could not start beeper:', error);
@@ -619,39 +664,68 @@
         
         function stopConnectionBeeper() {
             try {
+                if (beeperInterval) {
+                    clearInterval(beeperInterval);
+                    beeperInterval = null;
+                }
+                
                 if (beeperOscillator) {
                     beeperOscillator.stop();
                     beeperOscillator.disconnect();
                     beeperOscillator = null;
                 }
+                
                 if (beeperGainNode) {
                     beeperGainNode.disconnect();
                     beeperGainNode = null;
                 }
+                
+                isBeeperOn = false;
                 console.log('Connection beeper stopped');
             } catch (error) {
                 console.log('Error stopping beeper:', error);
             }
         }
         
-        // Test function to verify audio works
-        function testBeeper() {
-            console.log('Testing beeper...');
+        // Test function to verify audio pattern works
+        function testBeeperPattern() {
+            console.log('Testing beeper pattern...');
             const started = startConnectionBeeper();
             if (started) {
                 setTimeout(() => {
                     stopConnectionBeeper();
-                    console.log('Beeper test complete - you should have heard a 1-second beep');
-                }, 1000);
+                    console.log('Beeper pattern test complete - you should have heard alternating beeps');
+                }, 3000); // Test for 3 seconds
             } else {
                 console.log('Beeper test failed - check browser console for errors');
                 alert('Beeper test failed. Check browser console for errors.');
             }
         }
         
-        // Call function with beeper
+        // Connection status management
+        function showConnectionStatus(message, type = 'connecting') {
+            const statusEl = document.getElementById('connectionStatus');
+            if (statusEl) {
+                statusEl.textContent = message;
+                statusEl.className = 'connection-status ' + type;
+                statusEl.style.display = 'block';
+            }
+        }
+        
+        function hideConnectionStatus() {
+            const statusEl = document.getElementById('connectionStatus');
+            if (statusEl) {
+                statusEl.style.display = 'none';
+                statusEl.textContent = '';
+            }
+        }
+        
+        // Call function with beeper and status
         function startCallWithBeeper() {
-            // Start the connection beeper FIRST (while we have user interaction)
+            // Show connecting status
+            showConnectionStatus('Connecting...', 'connecting');
+            
+            // Start the connection beeper (alternating pattern)
             const beeperStarted = startConnectionBeeper();
             
             if (!beeperStarted) {
@@ -671,8 +745,11 @@
                 }, 50);
             } else {
                 UIManager.showError('Admin is offline');
-                // Stop beeper after a moment if admin is offline
-                setTimeout(stopConnectionBeeper, 1000);
+                // Stop beeper and hide status after a moment if admin is offline
+                setTimeout(() => {
+                    stopConnectionBeeper();
+                    hideConnectionStatus();
+                }, 1000);
             }
         }
         
@@ -682,8 +759,15 @@
             const checkInterval = setInterval(() => {
                 const hangupBtn = document.querySelector('.btn-hangup.active');
                 if (hangupBtn && !hangupBtn.disabled) {
-                    // Call is connected, stop the beeper
+                    // Call is connected, stop the beeper and update status
                     stopConnectionBeeper();
+                    showConnectionStatus('Connected', 'connected');
+                    
+                    // Hide status after 3 seconds
+                    setTimeout(() => {
+                        hideConnectionStatus();
+                    }, 3000);
+                    
                     clearInterval(checkInterval);
                     console.log('Call connected, beeper stopped');
                 }
@@ -692,8 +776,9 @@
             // Also stop checking after 60 seconds (call timeout)
             setTimeout(() => {
                 clearInterval(checkInterval);
-                // Stop beeper if call times out
+                // Stop beeper and hide status if call times out
                 stopConnectionBeeper();
+                hideConnectionStatus();
             }, 60000);
         }
         
@@ -701,6 +786,8 @@
         const originalCallUser = window.callUser;
         if (originalCallUser && typeof originalCallUser === 'function') {
             window.callUser = function(username, socketId) {
+                // Show connecting status
+                showConnectionStatus('Connecting...', 'connecting');
                 // Start beeper for admin calls too
                 startConnectionBeeper();
                 // Start monitoring for call connection
@@ -709,11 +796,12 @@
             };
         }
         
-        // Ensure hangup stops the beeper
+        // Ensure hangup stops the beeper and hides status
         const originalHangup = window.hangup;
         if (originalHangup && typeof originalHangup === 'function') {
             window.hangup = function() {
                 stopConnectionBeeper();
+                hideConnectionStatus();
                 return originalHangup();
             };
         }
@@ -723,7 +811,28 @@
         if (originalLogout && typeof originalLogout === 'function') {
             window.logout = function() {
                 stopConnectionBeeper();
+                hideConnectionStatus();
                 return originalLogout();
+            };
+        }
+        
+        // Hook into answer/reject functions to show connecting status
+        if (window.answerCall && typeof window.answerCall === 'function') {
+            const originalAnswerCall = window.answerCall;
+            window.answerCall = function() {
+                showConnectionStatus('Connecting...', 'connecting');
+                startConnectionBeeper();
+                monitorCallConnection();
+                return originalAnswerCall();
+            };
+        }
+        
+        if (window.rejectCall && typeof window.rejectCall === 'function') {
+            const originalRejectCall = window.rejectCall;
+            window.rejectCall = function() {
+                stopConnectionBeeper();
+                hideConnectionStatus();
+                return originalRejectCall();
             };
         }
         
