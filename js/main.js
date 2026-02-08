@@ -289,6 +289,40 @@ function setupGlobalFunctions() {
         console.log('Connected Users:', CONFIG.connectedUsers.length);
         console.log('==================');
     };
+    
+    // ========== STATUS MONITORING HOOKS - ADDED SECTION ==========
+    // Ensure our monitoring hooks are connected after setup
+    window.ensureStatusMonitoring = function() {
+        if (typeof testConnectionStatus !== 'undefined') {
+            testConnectionStatus();
+        }
+    };
+    
+    // Hook into call rejection flow
+    const originalRejectCall = window.rejectCall;
+    window.rejectCall = function() {
+        console.log('=== Global rejectCall() called - stopping monitoring ===');
+        if (typeof stopMonitoring !== 'undefined') {
+            stopMonitoring();
+        }
+        if (typeof hideConnectionStatus !== 'undefined') {
+            hideConnectionStatus();
+        }
+        return originalRejectCall();
+    };
+    
+    // Hook into hangup flow
+    const originalHangup = window.hangup;
+    window.hangup = function() {
+        console.log('=== Global hangup() called - stopping monitoring ===');
+        if (typeof stopMonitoring !== 'undefined') {
+            stopMonitoring();
+        }
+        if (typeof hideConnectionStatus !== 'undefined') {
+            hideConnectionStatus();
+        }
+        return originalHangup();
+    };
 }
 
 // ========== AUTO-RECONNECT ==========
