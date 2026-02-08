@@ -39,7 +39,7 @@ const AuthManager = {
         // Check permissions
         setTimeout(async () => {
             await this.checkPermissions();
-            await this.ensureMediaPermissions();
+            await this.ensureMediaPermissions(); // Preview mode
         }, 500);
     },
     
@@ -82,60 +82,58 @@ const AuthManager = {
         }
     },
     
-
-async ensureMediaPermissions(forCall = false) {
-    if (CONFIG.hasMediaPermissions && CONFIG.localStream && !forCall) {
-        return true;
-    }
-    
-    try {
-        UIManager.showStatus('Requesting camera/microphone access...');
-        
-        let constraints;
-        
-        if (forCall) {
-            // For calls: Use ResolutionManager if available, otherwise default
-            if (typeof ResolutionManager !== 'undefined') {
-                constraints = ResolutionManager.getCallConstraints();
-            } else {
-                constraints = { audio: true, video: true };
-            }
-        } else {
-            // For preview: Always use video
-            if (typeof ResolutionManager !== 'undefined') {
-                constraints = ResolutionManager.getPreviewConstraints();
-            } else {
-                constraints = { 
-                    audio: true, 
-                    video: { 
-                        width: { ideal: 640 }, 
-                        height: { ideal: 480 }, 
-                        frameRate: { ideal: 24 } 
-                    } 
-                };
-            }
+    async ensureMediaPermissions(forCall = false) {
+        if (CONFIG.hasMediaPermissions && CONFIG.localStream && !forCall) {
+            return true;
         }
         
-        console.log('Getting media with constraints:', constraints);
-        CONFIG.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-        CONFIG.hasMediaPermissions = true;
-        
-        if (CONFIG.elements.localVideo) {
-            CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
-            CONFIG.elements.localVideo.muted = true;
-            CONFIG.elements.localVideo.play().catch(e => console.log('Local video play:', e));
+        try {
+            UIManager.showStatus('Requesting camera/microphone access...');
+            
+            let constraints;
+            
+            if (forCall) {
+                // For calls: Use ResolutionManager if available, otherwise default
+                if (typeof ResolutionManager !== 'undefined') {
+                    constraints = ResolutionManager.getCallConstraints();
+                } else {
+                    constraints = { audio: true, video: true };
+                }
+            } else {
+                // For preview: Always use video
+                if (typeof ResolutionManager !== 'undefined') {
+                    constraints = ResolutionManager.getPreviewConstraints();
+                } else {
+                    constraints = { 
+                        audio: true, 
+                        video: { 
+                            width: { ideal: 640 }, 
+                            height: { ideal: 480 }, 
+                            frameRate: { ideal: 24 } 
+                        } 
+                    };
+                }
+            }
+            
+            console.log('Getting media with constraints:', constraints);
+            CONFIG.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+            CONFIG.hasMediaPermissions = true;
+            
+            if (CONFIG.elements.localVideo) {
+                CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
+                CONFIG.elements.localVideo.muted = true;
+                CONFIG.elements.localVideo.play().catch(e => console.log('Local video play:', e));
+            }
+            
+            console.log('✅ Media permissions granted');
+            return true;
+            
+        } catch (error) {
+            console.error('Failed to get media permissions:', error);
+            UIManager.showError('Camera/microphone access is required for calls');
+            return false;
         }
-        
-        console.log('✅ Media permissions granted');
-        return true;
-        
-    } catch (error) {
-        console.error('Failed to get media permissions:', error);
-        UIManager.showError('Camera/microphone access is required for calls');
-        return false;
     }
-}
-
 };
 
 window.AuthManager = AuthManager;
