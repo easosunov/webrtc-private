@@ -73,7 +73,7 @@
     .video-container {
         position: relative;
         width: 100%;
-        margin-top: 20px;
+        margin-top: 10px; /* Reduced from 20px */
     }
     
     /* Hidden buttons */
@@ -314,8 +314,8 @@
     
     /* Connection status */
     .connection-status {
-        margin: 10px 0;
-        padding: 10px;
+        margin: 5px 0; /* Reduced margin */
+        padding: 8px 12px; /* Reduced padding */
         background: #e3f2fd;
         border-radius: 5px;
         border-left: 4px solid #2196F3;
@@ -323,6 +323,7 @@
         color: #1976D2;
         text-align: center;
         display: none;
+        font-size: 0.9rem; /* Slightly smaller font */
     }
     
     .connection-status.connecting {
@@ -344,7 +345,7 @@
         }
         
         #remoteVideo {
-            height: calc(100vh - 250px) !important;
+            height: calc(100vh - 220px) !important; /* Adjusted for reduced spacing */
             object-fit: cover;
         }
         
@@ -364,6 +365,12 @@
             display: block;
             margin-left: 0;
             margin-top: 2px;
+        }
+        
+        .connection-status {
+            margin: 3px 0;
+            padding: 6px 10px;
+            font-size: 0.85rem;
         }
     }
     
@@ -480,7 +487,7 @@
             <div class="user-line" id="userLine-admin">
                 <span class="username">Administrator</span>
                 <!-- Call and Hang Up buttons only -->
-                <button class="btn-call" onclick="startCallWithBeeper()">Call</button>
+                <button class="btn-call" onclick="startCall()">Call</button>
                 <button class="btn-hangup" onclick="hangup()" disabled>Hang Up<span class="shortcut-hint">(Esc)</span></button>
             </div>
         </div>
@@ -493,8 +500,7 @@
             </div>
         </div>
         
-        <div style="margin-top: 30px; border-top: 2px solid #eee; padding-top: 20px;">
-            <h4>Video Call</h4>
+        <div style="margin-top: 20px; padding-top: 10px;"> <!-- Reduced margins -->
             <!-- Connection status display -->
             <div id="connectionStatus" class="connection-status"></div>
             
@@ -514,8 +520,6 @@
             <button onclick="logout()" style="background: #ff4444; color: white;">Logout<span class="shortcut-hint">(Ctrl+Shift+L)</span></button>
             <!-- Hidden Debug button -->
             <button onclick="debug()" class="hidden-button">Debug</button>
-            <!-- Test Beeper button -->
-            <button onclick="testBeeperPattern()" style="background: #2196F3; color: white; margin-left: 10px;">Test Beeper Pattern</button>
         </div>
     </div>
     
@@ -604,104 +608,6 @@
             }
         }
         
-        // Connection beeper using Web Audio API with alternating pattern
-        let beeperAudioContext = null;
-        let beeperOscillator = null;
-        let beeperGainNode = null;
-        let beeperInterval = null;
-        let isBeeperOn = false;
-        
-        function startConnectionBeeper() {
-            try {
-                // Create audio context if it doesn't exist
-                if (!beeperAudioContext) {
-                    beeperAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-                }
-                
-                // Stop any existing beeper
-                stopConnectionBeeper();
-                
-                // Create oscillator and gain node
-                beeperOscillator = beeperAudioContext.createOscillator();
-                beeperGainNode = beeperAudioContext.createGain();
-                
-                // Configure the beep sound
-                beeperOscillator.type = 'sine';      // Smooth tone
-                beeperOscillator.frequency.value = 350; // 350Hz - pleasant dial tone frequency
-                
-                // Set initial volume to 0 (off)
-                beeperGainNode.gain.value = 0;
-                
-                // Connect oscillator -> gain -> output
-                beeperOscillator.connect(beeperGainNode);
-                beeperGainNode.connect(beeperAudioContext.destination);
-                
-                // Start the oscillator (but silent initially)
-                beeperOscillator.start();
-                
-                // Set up alternating pattern: beep-beep-beep (on for 200ms, off for 200ms, repeat)
-                let beepCount = 0;
-                beeperInterval = setInterval(() => {
-                    if (isBeeperOn) {
-                        // Turn beep off
-                        beeperGainNode.gain.setValueAtTime(0, beeperAudioContext.currentTime);
-                        isBeeperOn = false;
-                    } else {
-                        // Turn beep on (at 20% volume)
-                        beeperGainNode.gain.setValueAtTime(0.2, beeperAudioContext.currentTime);
-                        isBeeperOn = true;
-                        beepCount++;
-                    }
-                }, 200); // 200ms on, 200ms off = 2.5 beeps per second
-                
-                console.log('Connection beeper started (alternating pattern)');
-                return true;
-            } catch (error) {
-                console.log('Could not start beeper:', error);
-                return false;
-            }
-        }
-        
-        function stopConnectionBeeper() {
-            try {
-                if (beeperInterval) {
-                    clearInterval(beeperInterval);
-                    beeperInterval = null;
-                }
-                
-                if (beeperOscillator) {
-                    beeperOscillator.stop();
-                    beeperOscillator.disconnect();
-                    beeperOscillator = null;
-                }
-                
-                if (beeperGainNode) {
-                    beeperGainNode.disconnect();
-                    beeperGainNode = null;
-                }
-                
-                isBeeperOn = false;
-                console.log('Connection beeper stopped');
-            } catch (error) {
-                console.log('Error stopping beeper:', error);
-            }
-        }
-        
-        // Test function to verify audio pattern works
-        function testBeeperPattern() {
-            console.log('Testing beeper pattern...');
-            const started = startConnectionBeeper();
-            if (started) {
-                setTimeout(() => {
-                    stopConnectionBeeper();
-                    console.log('Beeper pattern test complete - you should have heard alternating beeps');
-                }, 3000); // Test for 3 seconds
-            } else {
-                console.log('Beeper test failed - check browser console for errors');
-                alert('Beeper test failed. Check browser console for errors.');
-            }
-        }
-        
         // Connection status management
         function showConnectionStatus(message, type = 'connecting') {
             const statusEl = document.getElementById('connectionStatus');
@@ -720,34 +626,23 @@
             }
         }
         
-        // Call function with beeper and status
-        function startCallWithBeeper() {
+        // Call function with status
+        function startCall() {
             // Show connecting status
             showConnectionStatus('Connecting...', 'connecting');
-            
-            // Start the connection beeper (alternating pattern)
-            const beeperStarted = startConnectionBeeper();
-            
-            if (!beeperStarted) {
-                console.log('Note: Beeper could not start, continuing call anyway');
-            }
             
             // Start monitoring for call connection
             monitorCallConnection();
             
             // Then call the admin
             if (CONFIG.adminSocketId) {
-                // Small delay to ensure beeper starts
-                setTimeout(() => {
-                    if (typeof callAdmin === 'function') {
-                        callAdmin();
-                    }
-                }, 50);
+                if (typeof callAdmin === 'function') {
+                    callAdmin();
+                }
             } else {
                 UIManager.showError('Admin is offline');
-                // Stop beeper and hide status after a moment if admin is offline
+                // Hide status after a moment if admin is offline
                 setTimeout(() => {
-                    stopConnectionBeeper();
                     hideConnectionStatus();
                 }, 1000);
             }
@@ -759,8 +654,7 @@
             const checkInterval = setInterval(() => {
                 const hangupBtn = document.querySelector('.btn-hangup.active');
                 if (hangupBtn && !hangupBtn.disabled) {
-                    // Call is connected, stop the beeper and update status
-                    stopConnectionBeeper();
+                    // Call is connected, update status
                     showConnectionStatus('Connected', 'connected');
                     
                     // Hide status after 3 seconds
@@ -769,15 +663,14 @@
                     }, 3000);
                     
                     clearInterval(checkInterval);
-                    console.log('Call connected, beeper stopped');
+                    console.log('Call connected');
                 }
             }, 500);
             
             // Also stop checking after 60 seconds (call timeout)
             setTimeout(() => {
                 clearInterval(checkInterval);
-                // Stop beeper and hide status if call times out
-                stopConnectionBeeper();
+                // Hide status if call times out
                 hideConnectionStatus();
             }, 60000);
         }
@@ -788,29 +681,25 @@
             window.callUser = function(username, socketId) {
                 // Show connecting status
                 showConnectionStatus('Connecting...', 'connecting');
-                // Start beeper for admin calls too
-                startConnectionBeeper();
                 // Start monitoring for call connection
                 monitorCallConnection();
                 return originalCallUser(username, socketId);
             };
         }
         
-        // Ensure hangup stops the beeper and hides status
+        // Ensure hangup hides status
         const originalHangup = window.hangup;
         if (originalHangup && typeof originalHangup === 'function') {
             window.hangup = function() {
-                stopConnectionBeeper();
                 hideConnectionStatus();
                 return originalHangup();
             };
         }
         
-        // Also stop beeper on logout
+        // Also hide status on logout
         const originalLogout = window.logout;
         if (originalLogout && typeof originalLogout === 'function') {
             window.logout = function() {
-                stopConnectionBeeper();
                 hideConnectionStatus();
                 return originalLogout();
             };
@@ -821,7 +710,6 @@
             const originalAnswerCall = window.answerCall;
             window.answerCall = function() {
                 showConnectionStatus('Connecting...', 'connecting');
-                startConnectionBeeper();
                 monitorCallConnection();
                 return originalAnswerCall();
             };
@@ -830,7 +718,6 @@
         if (window.rejectCall && typeof window.rejectCall === 'function') {
             const originalRejectCall = window.rejectCall;
             window.rejectCall = function() {
-                stopConnectionBeeper();
                 hideConnectionStatus();
                 return originalRejectCall();
             };
@@ -986,7 +873,7 @@
                         hangupBtn.classList.remove('key-active');
                     }, 150);
                     
-                    // Execute hangup (which will stop the beeper)
+                    // Execute hangup
                     hangup();
                     return;
                 }
