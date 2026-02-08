@@ -26,6 +26,35 @@
     <!-- Main initialization -->
     <script src="./js/main.js"></script>
     
+    <!-- Status Bridge - Must be AFTER main.js but BEFORE other scripts -->
+    <script>
+        // Status Bridge - Make status functions available to JavaScript modules
+        // This runs after main.js loads but before call functions are used
+        console.log('Initializing status bridge...');
+        
+        window.statusBridge = {
+            show: function(message, type = 'connecting') {
+                console.log('statusBridge.show:', message);
+                if (window.showConnectionStatus) {
+                    window.showConnectionStatus(message, type);
+                } else {
+                    console.warn('showConnectionStatus not available');
+                }
+            },
+            hide: function() {
+                console.log('statusBridge.hide called');
+                if (window.hideConnectionStatus) {
+                    window.hideConnectionStatus();
+                }
+                if (window.stopMonitoring) {
+                    window.stopMonitoring();
+                }
+            }
+        };
+        
+        console.log('Status bridge ready');
+    </script>
+    
     <!-- ADD THIS INLINE SCRIPT - Cache buster for Android -->
     <script>
         // Android Cache Buster - Runs BEFORE anything else loads
@@ -523,7 +552,8 @@
             <div class="user-line" id="userLine-admin">
                 <span class="username">Administrator</span>
                 <!-- Call and Hang Up buttons only -->
-                <button class="btn-call" onclick="startCall()">Call</button>
+                <!-- CHANGED: onclick="startCall()" to onclick="callAdmin()" -->
+                <button class="btn-call" onclick="callAdmin()">Call</button>
                 <button class="btn-hangup" onclick="hangup()" disabled>Hang Up<span class="shortcut-hint">(Esc)</span></button>
             </div>
         </div>
@@ -572,180 +602,681 @@
         <source src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZ3620YQQAAAAAAA==" type="audio/wav">
     </audio>
     
- <script>
-    // ========== STATUS MONITORING FIXES ==========
-    // Wait for main.js to fully load before setting up hooks
-    function setupCallHooks() {
-        console.log('=== Setting up call hooks ===');
+    <script>
+        // ==== ADDED: Early debug info ====
+        console.log('=== PAGE LOAD DEBUG ===');
+        console.log('URL:', window.location.href);
+        console.log('Browser:', navigator.userAgent);
+        console.log('Platform:', navigator.platform);
+        console.log('connectionStatus element at load:', document.getElementById('connectionStatus'));
         
-        // Check if main.js has loaded (functions exist)
-        if (typeof callAdmin !== 'undefined') {
-            console.log('✓ main.js loaded, hooks active');
+        // Android cache control - ADD THIS FUNCTION
+        function clearAndroidCache() {
+            // Clear service workers
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                    registrations.forEach(function(registration) {
+                        registration.unregister();
+                    });
+                });
+            }
             
-            // Store original functions
-            const originalCallAdmin = callAdmin;
-            const originalCallUser = callUser;
+            // Clear cache API
+            if ('caches' in window) {
+                caches.keys().then(function(cacheNames) {
+                    cacheNames.forEach(function(cacheName) {
+                        caches.delete(cacheName);
+                    });
+                });
+            }
             
-            // Wrap callAdmin
-            window.callAdmin = function() {
-                console.log('=== callAdmin() called, starting monitoring ===');
-                if (typeof monitorCallConnection !== 'undefined') {
-                    monitorCallConnection();
-                }
-                if (typeof showConnectionStatus !== 'undefined') {
-                    showConnectionStatus();
-                }
-                return originalCallAdmin();
-            };
-            
-            // Wrap callUser
-            window.callUser = function(username, socketId) {
-                console.log('=== callUser() called, starting monitoring ===');
-                if (typeof monitorCallConnection !== 'undefined') {
-                    monitorCallConnection();
-                }
-                if (typeof showConnectionStatus !== 'undefined') {
-                    showConnectionStatus();
-                }
-                return originalCallUser(username, socketId);
-            };
-            
-            console.log('✓ Call hooks installed successfully');
-            
-        } else {
-            console.log('⚠️ main.js not loaded yet, retrying...');
-            setTimeout(setupCallHooks, 500);
+            return true;
         }
-    }
-    
-    // Early debug info
-    console.log('=== Early debug info ===');
-    console.log('Browser:', navigator.userAgent);
-    console.log('Platform:', navigator.platform);
-    console.log('URL:', window.location.href);
-    console.log('DOM readyState:', document.readyState);
-    
-    // Start setup when appropriate
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM fully loaded, setting up hooks...');
-            setTimeout(setupCallHooks, 1000); // Give main.js time to load
+        
+        // ==== ADDED: Interval tracking variable for monitoring ====
+        let callMonitorInterval = null;
+        
+        // Run cache clearing on page load
+        window.addEventListener('load', function() {
+            console.log('Script loading order check - main functions available:');
+            console.log('  - showConnectionStatus:', typeof showConnectionStatus);
+            console.log('  - statusBridge:', typeof statusBridge);
+            console.log('  - callAdmin:', typeof callAdmin);
+            console.log('  - UIManager:', typeof UIManager);
+            console.log('  - CONFIG:', typeof CONFIG);
+            
+            if (/Android/.test(navigator.userAgent)) {
+                console.log('Android detected, clearing caches');
+                clearAndroidCache();
+                
+                // Add cache busting to all script tags
+                document.querySelectorAll('script[src]').forEach(function(script) {
+                    const src = script.getAttribute('src');
+                    if (src && !src.includes('?')) {
+                        script.setAttribute('src', src + '?t=' + Date.now());
+                    }
+                });
+            }
         });
-    } else {
-        console.log('DOM already loaded, setting up hooks...');
-        setTimeout(setupCallHooks, 1000); // Give main.js time to load
-    }
-    
-    // ========== STATUS MANAGEMENT FUNCTIONS ==========
-    let callMonitorInterval = null;
-    
-    function showConnectionStatus() {
-        console.log('=== showConnectionStatus() called ===');
         
-        // Check if status line exists
-        let statusLine = document.getElementById('connection-status-line');
-        if (!statusLine) {
-            console.log('Creating status line...');
-            statusLine = document.createElement('div');
-            statusLine.id = 'connection-status-line';
-            statusLine.style.cssText = `
-                position: fixed;
-                top: 10px;
-                left: 50%;
-                transform: translateX(-50%);
-                background: #1976D3;
-                color: white;
-                padding: 10px 20px;
-                border-radius: 20px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-                z-index: 1000;
-                font-weight: bold;
-                display: block !important;
-                opacity: 1 !important;
-                visibility: visible !important;
-            `;
-            statusLine.textContent = 'Connecting...';
-            document.body.appendChild(statusLine);
-            console.log('Status line created');
-        } else {
-            statusLine.style.display = 'block';
-            statusLine.style.opacity = '1';
-            statusLine.style.visibility = 'visible';
-            statusLine.textContent = 'Connecting...';
-            console.log('Status line shown');
+        // Keypad functionality
+        let accessCode = '';
+        
+        function addToCode(char) {
+            accessCode += char;
+            updateDisplay();
+            document.getElementById('hiddenAccessCode').value = accessCode;
         }
         
-        // Force redraw for Android
-        void statusLine.offsetWidth;
-    }
-    
-    function hideConnectionStatus() {
-        console.log('=== hideConnectionStatus() called ===');
-        const statusLine = document.getElementById('connection-status-line');
-        if (statusLine) {
-            statusLine.style.display = 'none';
-            statusLine.style.opacity = '0';
-            statusLine.style.visibility = 'hidden';
-            console.log('Status line hidden');
-        } else {
-            console.log('No status line to hide');
-        }
-    }
-    
-    function monitorCallConnection() {
-        console.log('=== monitorCallConnection() started ===');
-        
-        if (callMonitorInterval) {
-            clearInterval(callMonitorInterval);
-            console.log('Cleared previous monitoring interval');
+        function clearCode() {
+            accessCode = '';
+            updateDisplay();
+            document.getElementById('hiddenAccessCode').value = '';
+            document.getElementById('hiddenAccessCode').focus();
         }
         
-        // Check every second if we're still in "Connecting..." state but call ended
-        callMonitorInterval = setInterval(() => {
-            const statusLine = document.getElementById('connection-status-line');
+        function backspaceCode() {
+            accessCode = accessCode.slice(0, -1);
+            updateDisplay();
+            document.getElementById('hiddenAccessCode').value = accessCode;
+        }
+        
+        function updateDisplay() {
+            const display = document.getElementById('accessCodeDisplay');
+            if (accessCode === '') {
+                display.textContent = 'Enter Code';
+                display.style.color = '#999';
+            } else {
+                display.textContent = accessCode;
+                display.style.color = '#333';
+            }
+        }
+        
+        function submitCode() {
+            if (accessCode.trim() === '') {
+                UIManager.showError('Please enter an access code');
+                return;
+            }
             
-            // If status line exists but we're not in a call, hide it
-            if (statusLine && statusLine.style.display !== 'none') {
-                if (!CONFIG || !CONFIG.isInCall) {
-                    console.log('Call ended but status still showing - hiding');
-                    hideConnectionStatus();
-                    stopMonitoring();
+            if (CONFIG.elements && CONFIG.elements.accessCodeInput) {
+                CONFIG.elements.accessCodeInput.value = accessCode;
+            }
+            
+            AuthManager.login();
+        }
+        
+        // Highlight keypad button when key is pressed
+        function highlightKeypadButton(key) {
+            // Map keyboard keys to button selectors
+            const keyMap = {
+                '1': 'button[onclick="addToCode(\'1\')"]',
+                '2': 'button[onclick="addToCode(\'2\')"]',
+                '3': 'button[onclick="addToCode(\'3\')"]',
+                '4': 'button[onclick="addToCode(\'4\')"]',
+                '5': 'button[onclick="addToCode(\'5\')"]',
+                '6': 'button[onclick="addToCode(\'6\')"]',
+                '7': 'button[onclick="addToCode(\'7\')"]',
+                '8': 'button[onclick="addToCode(\'8\')"]',
+                '9': 'button[onclick="addToCode(\'9\')"]',
+                '0': 'button[onclick="addToCode(\'0\')"]',
+                '+': 'button[onclick="addToCode(\'+\')"]',
+                '#': 'button[onclick="addToCode(\'#\')"]'
+            };
+            
+            const selector = keyMap[key];
+            if (selector) {
+                const button = document.querySelector(selector);
+                if (button) {
+                    // Add active class
+                    button.classList.add('key-active');
+                    
+                    // Remove highlight after 150ms (matching CSS transition)
+                    setTimeout(() => {
+                        button.classList.remove('key-active');
+                    }, 150);
                 }
             }
-        }, 1000);
-        
-        console.log('Call monitoring active');
-    }
-    
-    function stopMonitoring() {
-        console.log('=== stopMonitoring() called ===');
-        if (callMonitorInterval) {
-            clearInterval(callMonitorInterval);
-            callMonitorInterval = null;
-            console.log('Call monitoring stopped');
-        } else {
-            console.log('No active monitoring to stop');
         }
-    }
-    
-    function testConnectionStatus() {
-        console.log('=== Testing connection status functions ===');
-        console.log('1. Testing showConnectionStatus()');
-        showConnectionStatus();
         
-        console.log('2. Testing hideConnectionStatus()');
-        setTimeout(hideConnectionStatus, 1000);
+        // ==== MODIFIED: Connection status management with diagnostics ====
+        function showConnectionStatus(message, type = 'connecting') {
+            const statusEl = document.getElementById('connectionStatus');
+            if (statusEl) {
+                console.log('=== showConnectionStatus() called ===');
+                console.log('Message:', message);
+                console.log('Type:', type);
+                console.log('Browser:', navigator.userAgent);
+                console.log('Element exists:', !!statusEl);
+                console.log('Current display:', statusEl.style.display);
+                console.log('Current className:', statusEl.className);
+                
+                // Set content and class
+                statusEl.textContent = message;
+                statusEl.className = 'connection-status ' + type;
+                
+                // Multiple display methods for cross-browser compatibility
+                statusEl.style.display = 'block';
+                statusEl.style.visibility = 'visible';
+                statusEl.style.opacity = '1';
+                
+                // Force reflow (helps some browsers)
+                void statusEl.offsetWidth;
+                
+                // Check computed styles
+                const computed = window.getComputedStyle(statusEl);
+                console.log('Computed display:', computed.display);
+                console.log('Computed visibility:', computed.visibility);
+                console.log('Computed opacity:', computed.opacity);
+                console.log('Computed height:', computed.height);
+                
+                // Nuclear option if still hidden
+                if (computed.display === 'none' || computed.visibility === 'hidden') {
+                    console.warn('Element still hidden! Applying nuclear fix...');
+                    
+                    // Force inline styles with !important
+                    const bgColor = type === 'connecting' ? '#fff3e0' : '#e8f5e9';
+                    const borderColor = type === 'connecting' ? '#ff9800' : '#4CAF50';
+                    const textColor = type === 'connecting' ? '#ef6c00' : '#2e7d32';
+                    
+                    statusEl.setAttribute('style', 
+                        'display: block !important; ' +
+                        'visibility: visible !important; ' +
+                        'opacity: 1 !important; ' +
+                        'margin: 5px 0 !important; ' +
+                        'padding: 8px 12px !important; ' +
+                        'background: ' + bgColor + ' !important; ' +
+                        'border-left: 4px solid ' + borderColor + ' !important; ' +
+                        'border-radius: 5px !important; ' +
+                        'font-weight: bold !important; ' +
+                        'color: ' + textColor + ' !important; ' +
+                        'text-align: center !important;' +
+                        'font-size: 14px !important;'
+                    );
+                }
+                
+                console.log('=== showConnectionStatus() completed ===');
+            } else {
+                console.error('ERROR: connectionStatus element not found!');
+            }
+        }
         
-        console.log('3. Testing monitorCallConnection()');
-        setTimeout(() => {
-            monitorCallConnection();
-            setTimeout(stopMonitoring, 2000);
-        }, 1500);
+        function hideConnectionStatus() {
+            const statusEl = document.getElementById('connectionStatus');
+            if (statusEl) {
+                console.log('=== hideConnectionStatus() called ===');
+                
+                // Multiple hiding methods
+                statusEl.style.display = 'none';
+                statusEl.style.visibility = 'hidden';
+                statusEl.style.opacity = '0';
+                statusEl.style.height = '0';
+                statusEl.style.padding = '0';
+                statusEl.style.margin = '0';
+                statusEl.textContent = '';
+                
+                console.log('=== hideConnectionStatus() completed ===');
+            }
+        }
         
-        console.log('✓ Status functions test complete');
-    }
-</script>
- 
- 
+        // ==== ADDED: Diagnostic test function ====
+        function testConnectionStatus() {
+            console.clear();
+            console.log('=== CONNECTION STATUS DIAGNOSTIC TEST ===');
+            console.log('Testing on:', navigator.userAgent);
+            console.log('Timestamp:', new Date().toISOString());
+            
+            // Test 1: Check if element exists
+            const statusEl = document.getElementById('connectionStatus');
+            console.log('1. Element check:', statusEl ? 'Found' : 'NOT FOUND');
+            
+            if (statusEl) {
+                console.log('   - Tag:', statusEl.tagName);
+                console.log('   - ID:', statusEl.id);
+                console.log('   - Current display:', statusEl.style.display);
+                console.log('   - Current text:', statusEl.textContent);
+                
+                // Test 2: Check CSS
+                const computed = window.getComputedStyle(statusEl);
+                console.log('2. CSS check:');
+                console.log('   - Display:', computed.display);
+                console.log('   - Visibility:', computed.visibility);
+                console.log('   - Opacity:', computed.opacity);
+                console.log('   - Height:', computed.height);
+                console.log('   - Width:', computed.width);
+                
+                // Test 3: Show test message
+                console.log('3. Showing test message...');
+                showConnectionStatus('TEST: Should be visible', 'connecting');
+                
+                // Test 4: Check after showing
+                setTimeout(() => {
+                    console.log('4. After show check:');
+                    const afterComputed = window.getComputedStyle(statusEl);
+                    console.log('   - Display:', afterComputed.display);
+                    console.log('   - Visibility:', afterComputed.visibility);
+                    console.log('   - Opacity:', afterComputed.opacity);
+                    
+                    // Test 5: Check position
+                    const rect = statusEl.getBoundingClientRect();
+                    console.log('5. Position check:');
+                    console.log('   - Top:', rect.top);
+                    console.log('   - Left:', rect.left);
+                    console.log('   - Width:', rect.width);
+                    console.log('   - Height:', rect.height);
+                    console.log('   - Visible:', rect.width > 0 && rect.height > 0);
+                    
+                    if (rect.width === 0 || rect.height === 0) {
+                        console.error('   ERROR: Element has zero dimensions!');
+                        alert('Element has zero size! This is likely a CSS issue.');
+                    }
+                    
+                    // Test 6: Hide after 3 seconds
+                    setTimeout(() => {
+                        console.log('6. Hiding test message...');
+                        hideConnectionStatus();
+                        console.log('=== TEST COMPLETE ===');
+                    }, 3000);
+                }, 100);
+            } else {
+                alert('ERROR: connectionStatus element not found in DOM!');
+            }
+        }
+        
+        // ==== MODIFIED: Hook callAdmin to show status ====
+        // Wait for main.js to load and then wrap callAdmin
+        function setupCallHooks() {
+            console.log('Setting up call hooks...');
+            
+            if (typeof callAdmin !== 'undefined') {
+                // Store original callAdmin
+                const originalCallAdmin = callAdmin;
+                // Wrap it to show status
+                window.callAdmin = function() {
+                    console.log('callAdmin wrapped - showing status');
+                    if (window.showConnectionStatus) {
+                        window.showConnectionStatus('Connecting...', 'connecting');
+                    }
+                    return originalCallAdmin();
+                };
+                console.log('✓ callAdmin hook installed');
+            }
+            
+            if (typeof callUser !== 'undefined') {
+                const originalCallUser = callUser;
+                window.callUser = function(username, socketId) {
+                    console.log('callUser wrapped - showing status');
+                    if (window.showConnectionStatus) {
+                        window.showConnectionStatus('Connecting...', 'connecting');
+                    }
+                    return originalCallUser(username, socketId);
+                };
+                console.log('✓ callUser hook installed');
+            }
+        }
+        
+        // Wait for main.js to load, then setup hooks
+        setTimeout(setupCallHooks, 1000);
+        
+        // ==== MODIFIED: Monitor when hangup button becomes active (call connected) ====
+        function monitorCallConnection() {
+            console.log('=== monitorCallConnection() started ===');
+            // Clear any existing monitoring first
+            if (callMonitorInterval) {
+                clearInterval(callMonitorInterval);
+                callMonitorInterval = null;
+            }
+            
+            // Check every 500ms for hangup button state
+            callMonitorInterval = setInterval(() => {
+                const hangupBtn = document.querySelector('.btn-hangup.active');
+                if (hangupBtn && !hangupBtn.disabled) {
+                    // Call is connected, update status
+                    showConnectionStatus('Connected', 'connected');
+                    
+                    // Hide status after 3 seconds
+                    setTimeout(() => {
+                        hideConnectionStatus();
+                    }, 3000);
+                    
+                    // Stop monitoring since call is connected
+                    stopMonitoring();
+                    console.log('Call connected - monitoring stopped');
+                }
+            }, 500);
+            
+            // Also stop checking after 60 seconds (call timeout)
+            setTimeout(() => {
+                stopMonitoring();
+                // Hide status if call times out
+                hideConnectionStatus();
+                console.log('Call timeout - monitoring stopped');
+            }, 60000);
+        }
+        
+        // ==== ADDED: Function to stop monitoring interval ====
+        function stopMonitoring() {
+            if (callMonitorInterval) {
+                clearInterval(callMonitorInterval);
+                callMonitorInterval = null;
+                console.log('Call monitoring stopped');
+            }
+        }
+        
+        // ==== MODIFIED: Ensure hangup hides status AND stops monitoring ====
+        const originalHangup = window.hangup;
+        if (originalHangup && typeof originalHangup === 'function') {
+            window.hangup = function() {
+                hideConnectionStatus();
+                stopMonitoring();
+                return originalHangup();
+            };
+        }
+        
+        // ==== MODIFIED: Also hide status AND stop monitoring on logout ====
+        const originalLogout = window.logout;
+        if (originalLogout && typeof originalLogout === 'function') {
+            window.logout = function() {
+                hideConnectionStatus();
+                stopMonitoring();
+                return originalLogout();
+            };
+        }
+        
+        // Hook into answer/reject functions to show connecting status
+        if (window.answerCall && typeof window.answerCall === 'function') {
+            const originalAnswerCall = window.answerCall;
+            window.answerCall = function() {
+                showConnectionStatus('Connecting...', 'connecting');
+                monitorCallConnection();
+                return originalAnswerCall();
+            };
+        }
+        
+        // ==== MODIFIED: rejectCall hook to stop monitoring ====
+        if (window.rejectCall && typeof window.rejectCall === 'function') {
+            const originalRejectCall = window.rejectCall;
+            window.rejectCall = function() {
+                hideConnectionStatus();
+                stopMonitoring();
+                return originalRejectCall();
+            };
+        }
+        
+        // Play Videos function
+        function playVideo() {
+            const localVideo = document.getElementById('localVideo');
+            const remoteVideo = document.getElementById('remoteVideo');
+            
+            if (localVideo && localVideo.srcObject) {
+                localVideo.play().catch(e => console.log('Local video play error:', e));
+            }
+            
+            if (remoteVideo && remoteVideo.srcObject) {
+                remoteVideo.play().catch(e => console.log('Remote video play error:', e));
+            }
+            
+            if (typeof UIManager !== 'undefined' && UIManager.showStatus) {
+                UIManager.showStatus('Video playing...');
+            }
+        }
+        
+        // Debug function
+        function debug() {
+            if (typeof CONFIG !== 'undefined' && CONFIG.debug) {
+                CONFIG.debug();
+            }
+            console.log('Debug info:', { accessCode: accessCode });
+        }
+        
+        // Simple draggable video - NO changes to existing login code
+        function initDraggableVideo() {
+            const localVideo = document.getElementById('localVideo');
+            if (!localVideo) return;
+            
+            let isDragging = false;
+            let startX, startY, startLeft, startTop;
+            
+            // Make video draggable
+            localVideo.addEventListener('mousedown', startDrag);
+            localVideo.addEventListener('touchstart', startDrag, { passive: false });
+            
+            function startDrag(e) {
+                e.preventDefault();
+                isDragging = true;
+                
+                // Get starting positions
+                if (e.type === 'touchstart') {
+                    startX = e.touches[0].clientX;
+                    startY = e.touches[0].clientY;
+                } else {
+                    startX = e.clientX;
+                    startY = e.clientY;
+                }
+                
+                const rect = localVideo.getBoundingClientRect();
+                startLeft = rect.left;
+                startTop = rect.top;
+                
+                // Add move and end listeners
+                document.addEventListener('mousemove', drag);
+                document.addEventListener('mouseup', stopDrag);
+                document.addEventListener('touchmove', drag, { passive: false });
+                document.addEventListener('touchend', stopDrag);
+                
+                // Visual feedback
+                localVideo.style.border = '3px solid #4CAF50';
+                localVideo.style.boxShadow = '0 0 20px rgba(0,0,0,0.9)';
+            }
+            
+            function drag(e) {
+                if (!isDragging) return;
+                e.preventDefault();
+                
+                let clientX, clientY;
+                if (e.type === 'touchmove') {
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                } else {
+                    clientX = e.clientX;
+                    clientY = e.clientY;
+                }
+                
+                // Calculate new position
+                const deltaX = clientX - startX;
+                const deltaY = clientY - startY;
+                const newLeft = startLeft + deltaX;
+                const newTop = startTop + deltaY;
+                
+                // Apply new position
+                localVideo.style.left = newLeft + 'px';
+                localVideo.style.top = newTop + 'px';
+                localVideo.style.right = 'auto';
+            }
+            
+            function stopDrag() {
+                isDragging = false;
+                
+                // Remove listeners
+                document.removeEventListener('mousemove', drag);
+                document.removeEventListener('mouseup', stopDrag);
+                document.removeEventListener('touchmove', drag);
+                document.removeEventListener('touchend', stopDrag);
+                
+                // Restore normal style
+                localVideo.style.border = '2px solid white';
+                localVideo.style.boxShadow = '0 0 15px rgba(0,0,0,0.7)';
+                
+                // Keep within screen bounds
+                const rect = localVideo.getBoundingClientRect();
+                const windowWidth = window.innerWidth;
+                const windowHeight = window.innerHeight;
+                
+                if (rect.right > windowWidth) {
+                    localVideo.style.left = (windowWidth - rect.width - 10) + 'px';
+                }
+                if (rect.bottom > windowHeight) {
+                    localVideo.style.top = (windowHeight - rect.height - 10) + 'px';
+                }
+                if (rect.left < 0) {
+                    localVideo.style.left = '10px';
+                }
+                if (rect.top < 0) {
+                    localVideo.style.top = '10px';
+                }
+            }
+            
+            // Set initial position
+            localVideo.style.position = 'fixed';
+            localVideo.style.top = '20px';
+            localVideo.style.right = '20px';
+        }
+        
+        // Global keyboard shortcut handler
+        function handleGlobalShortcuts(e) {
+            // Only process if we're not in an input/textarea
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                return;
+            }
+            
+            // ESC key for hangup (only when in call)
+            if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
+                // Check if hangup button is enabled (in call)
+                const hangupBtn = document.querySelector('.btn-hangup.active');
+                if (hangupBtn && !hangupBtn.disabled) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // Visual feedback
+                    hangupBtn.classList.add('key-active');
+                    setTimeout(() => {
+                        hangupBtn.classList.remove('key-active');
+                    }, 150);
+                    
+                    // Execute hangup
+                    hangup();
+                    return;
+                }
+            }
+            
+            // Ctrl+Shift+L for logout (always available when logged in)
+            if (e.key.toLowerCase() === 'l' && e.ctrlKey && e.shiftKey && !e.altKey) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Check if we're on the call screen (logged in)
+                const callDiv = document.getElementById('call');
+                if (callDiv && callDiv.style.display !== 'none') {
+                    // Visual feedback
+                    const logoutBtn = document.querySelector('button[onclick="logout()"]');
+                    if (logoutBtn) {
+                        logoutBtn.classList.add('key-active');
+                        setTimeout(() => {
+                            logoutBtn.classList.remove('key-active');
+                        }, 150);
+                    }
+                    
+                    // Execute logout
+                    logout();
+                    return;
+                }
+            }
+        }
+        
+        // Initialize everything when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            const hiddenInput = document.getElementById('hiddenAccessCode');
+            
+            // Focus hidden input when clicking display
+            document.getElementById('accessCodeDisplay').addEventListener('click', function() {
+                hiddenInput.focus();
+            });
+            
+            // Handle keyboard input
+            hiddenInput.addEventListener('input', function(e) {
+                accessCode = this.value;
+                updateDisplay();
+            });
+            
+            // Handle key presses in hidden input
+            hiddenInput.addEventListener('keydown', function(e) {
+                if (!/[0-9+#]/.test(e.key) && 
+                    !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'].includes(e.key)) {
+                    e.preventDefault();
+                }
+                
+                // Show visual feedback for keypad keys
+                if (/[0-9+#]/.test(e.key)) {
+                    highlightKeypadButton(e.key);
+                }
+                
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitCode();
+                    // Highlight Enter button
+                    const enterButton = document.querySelector('.enter-btn');
+                    if (enterButton) {
+                        enterButton.classList.add('key-active');
+                        setTimeout(() => {
+                            enterButton.classList.remove('key-active');
+                        }, 150);
+                    }
+                }
+                
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    clearCode();
+                }
+            });
+            
+            // Allow direct key presses (when hidden input is not focused)
+            document.addEventListener('keydown', function(e) {
+                if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                    if (/[0-9+#]/.test(e.key)) {
+                        e.preventDefault();
+                        addToCode(e.key);
+                        // Add visual feedback
+                        highlightKeypadButton(e.key);
+                    } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        submitCode();
+                        // Highlight Enter button
+                        const enterButton = document.querySelector('.enter-btn');
+                        if (enterButton) {
+                            enterButton.classList.add('key-active');
+                            setTimeout(() => {
+                                enterButton.classList.remove('key-active');
+                            }, 150);
+                        }
+                    } else if (e.key === 'Backspace') {
+                        e.preventDefault();
+                        backspaceCode();
+                    } else if (e.key === 'Escape') {
+                        // Don't handle Escape here - let the global handler handle it
+                        // This prevents conflict with the login screen Escape for clearCode()
+                        if (document.getElementById('call').style.display === 'none') {
+                            // We're on login screen, so use Escape for clear
+                            e.preventDefault();
+                            clearCode();
+                        }
+                        // If we're on call screen, let handleGlobalShortcuts handle it
+                    }
+                }
+            });
+            
+            // Add global shortcut handler for call screen shortcuts
+            document.addEventListener('keydown', handleGlobalShortcuts);
+            
+            // Initialize
+            updateDisplay();
+            hiddenInput.focus();
+            
+            // Initialize draggable video when call screen is shown
+            const originalShowCallScreen = UIManager.showCallScreen;
+            UIManager.showCallScreen = function() {
+                originalShowCallScreen.call(this);
+                setTimeout(initDraggableVideo, 100);
+            };
+        });
+    </script>
 </body>
 </html>
