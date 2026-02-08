@@ -138,7 +138,7 @@
     .video-container {
         position: relative;
         width: 100%;
-        margin-top: 10px; /* Reduced from 20px */
+        margin-top: 5px; /* Reduced from 10px */
     }
     
     /* Hidden buttons */
@@ -312,28 +312,30 @@
     
     /* Call screen styles */
     .user-line {
-        padding: 10px;
-        margin: 5px 0;
+        padding: 8px 10px; /* Reduced padding */
+        margin: 3px 0; /* Reduced margin */
         border: 1px solid #ddd;
         display: flex;
         align-items: center;
         background: white;
-        border-radius: 8px;
+        border-radius: 6px; /* Slightly smaller radius */
     }
     
     .username {
         flex-grow: 1;
         font-weight: bold;
+        font-size: 0.95rem; /* Slightly smaller */
     }
     
     button:not(.keypad-btn):not(.clear-btn):not(.hidden-button) {
-        margin: 0 5px;
-        padding: 8px 15px;
+        margin: 0 4px; /* Reduced margin */
+        padding: 6px 12px; /* Reduced padding */
         cursor: pointer;
         border: 1px solid #ccc;
-        border-radius: 5px;
+        border-radius: 4px; /* Smaller radius */
         background: #4CAF50;
         color: white;
+        font-size: 0.85rem; /* Smaller font */
     }
     
     button:disabled:not(.keypad-btn):not(.clear-btn):not(.hidden-button) {
@@ -360,47 +362,49 @@
     }
     
     #userView, #adminView {
-        margin: 20px 0;
+        margin: 10px 0; /* Reduced from 20px */
     }
     
     h3 {
         border-bottom: 2px solid #4CAF50;
-        padding-bottom: 5px;
-        margin-bottom: 15px;
+        padding-bottom: 3px; /* Reduced */
+        margin-bottom: 10px; /* Reduced from 15px */
+        font-size: 1.1rem; /* Smaller */
     }
     
     /* Shortcut hints */
     .shortcut-hint {
-        font-size: 0.7rem;
+        font-size: 0.65rem; /* Smaller */
         color: #666;
-        margin-left: 5px;
+        margin-left: 4px; /* Reduced */
         font-style: italic;
     }
     
-    /* Connection status - FIXED TYPO IN COLOR VALUE - REMOVED !important TO ALLOW OVERRIDE */
+    /* Connection status - SUBTLE BLACK AND WHITE VERSION */
     .connection-status {
-        margin: 5px 0;
-        padding: 8px 12px;
-        background: #e3f2fd;
-        border-radius: 5px;
-        border-left: 4px solid #2196F3;
-        font-weight: bold;
-        color: #1976D3;
+        margin: 2px 0; /* Reduced margin */
+        padding: 4px 8px; /* Reduced padding */
+        background: #ffffff; /* White background */
+        border-radius: 3px; /* Smaller radius */
+        border: 1px solid #333333; /* Black border */
+        font-weight: normal; /* Not bold */
+        color: #333333; /* Black text */
         text-align: center;
         display: none;
-        font-size: 0.9rem;
+        font-size: 0.8rem; /* Smaller font */
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1); /* Subtle shadow */
     }
     
     .connection-status.connecting {
-        background: #fff3e0;
-        border-left-color: #ff9800;
-        color: #ef6c00;
+        background: #f5f5f5; /* Light gray */
+        border-color: #666666; /* Dark gray */
+        color: #333333; /* Black text */
     }
     
     .connection-status.connected {
-        background: #e8f5e9;
-        border-left-color: #4CAF50;
-        color: #2e7d32;
+        background: #f0f0f0; /* Slightly darker gray */
+        border-color: #444444; /* Dark gray */
+        color: #222222; /* Darker black */
     }
     
     @media (max-width: 768px) {
@@ -410,7 +414,7 @@
         }
         
         #remoteVideo {
-            height: calc(100vh - 220px) !important;
+            height: calc(100vh - 200px) !important; /* Adjusted for reduced spacing */
             object-fit: cover;
         }
         
@@ -433,9 +437,20 @@
         }
         
         .connection-status {
-            margin: 3px 0;
-            padding: 6px 10px;
-            font-size: 0.85rem;
+            margin: 2px 0;
+            padding: 3px 6px;
+            font-size: 0.75rem;
+        }
+        
+        .user-line {
+            padding: 6px 8px;
+            margin: 2px 0;
+        }
+        
+        button:not(.keypad-btn):not(.clear-btn):not(.hidden-button) {
+            margin: 0 3px;
+            padding: 5px 10px;
+            font-size: 0.8rem;
         }
     }
     
@@ -565,7 +580,7 @@
             </div>
         </div>
         
-        <div style="margin-top: 20px; padding-top: 10px;">
+        <div style="margin-top: 15px; padding-top: 8px;"> <!-- Reduced margins -->
             <!-- Connection status display -->
             <div id="connectionStatus" class="connection-status"></div>
             
@@ -581,19 +596,13 @@
         <!-- Resolution controls will be inserted here by resolution-ui.js -->
         <!-- Logout button will be below resolution controls -->
         
-        <div style="margin-top: 20px;">
-            <button onclick="logout()" style="background: #ff4444; color: white;">Logout<span class="shortcut-hint">(Ctrl+Shift+L)</span></button>
+        <div style="margin-top: 15px;"> <!-- Reduced margin -->
+            <button onclick="logout()" style="background: #ff4444; color: white; padding: 6px 12px; font-size: 0.85rem;">Logout<span class="shortcut-hint">(Ctrl+Shift+L)</span></button>
             <!-- Hidden Debug button -->
             <button onclick="debug()" class="hidden-button">Debug</button>
         </div>
         
-        <!-- CHANGED: Ultimate Status Test button -->
-        <div style="margin-top: 10px; text-align: center;">
-            <button onclick="ultimateStatusTest()" 
-                    style="background: #9C27B0; color: white; padding: 8px 15px; font-size: 14px; font-weight: bold;">
-                🔥 Ultimate Status Test 🔥
-            </button>
-        </div>
+        <!-- REMOVED: Ultimate Status Test button -->
     </div>
     
     <!-- Hidden ringtone -->
@@ -763,216 +772,33 @@
             }
         }
         
-        // ==== AGGRESSIVE CONNECTION STATUS MANAGEMENT ====
+        // ==== SUBTLE STATUS MANAGEMENT ====
         function showConnectionStatus(message, type = 'connecting') {
-            console.log('=== AGGRESSIVE showConnectionStatus() called ===');
-            console.log('Message:', message);
-            console.log('Type:', type);
-            console.log('Browser:', navigator.userAgent);
-            
-            // First, try to clean up any existing emergency elements
-            if (window._emergencyStatus) {
-                try {
-                    window._emergencyStatus.remove();
-                } catch (e) {}
-                window._emergencyStatus = null;
+            const statusEl = document.getElementById('connectionStatus');
+            if (statusEl) {
+                console.log('showConnectionStatus:', message);
+                
+                // Set content and class
+                statusEl.textContent = message;
+                statusEl.className = 'connection-status ' + type;
+                
+                // Show with subtle styling
+                statusEl.style.display = 'block';
+                statusEl.style.opacity = '1';
+                statusEl.style.visibility = 'visible';
+                
+                // Force reflow
+                void statusEl.offsetWidth;
             }
-            
-            // Define colors based on type
-            const bgColor = type === 'connecting' ? '#fff3e0' : '#e8f5e9';
-            const borderColor = type === 'connecting' ? '#ff9800' : '#4CAF50';
-            const textColor = type === 'connecting' ? '#ef6c00' : '#2e7d32';
-            
-            // TRY METHOD 1: Direct inline styling on existing element
-            const existingEl = document.getElementById('connectionStatus');
-            if (existingEl) {
-                console.log('Found existing element, applying aggressive styles...');
-                
-                // Apply extreme inline styles with !important
-                existingEl.setAttribute('style', 
-                    'display: block !important; ' +
-                    'visibility: visible !important; ' +
-                    'opacity: 1 !important; ' +
-                    'margin: 10px 0 !important; ' +
-                    'padding: 12px 20px !important; ' +
-                    'background: ' + bgColor + ' !important; ' +
-                    'border: 2px solid ' + borderColor + ' !important; ' +
-                    'border-radius: 8px !important; ' +
-                    'font-weight: bold !important; ' +
-                    'color: ' + textColor + ' !important; ' +
-                    'text-align: center !important;' +
-                    'font-size: 16px !important;' +
-                    'min-height: 30px !important;' +
-                    'width: 100% !important;' +
-                    'box-sizing: border-box !important;' +
-                    'z-index: 9999 !important;' +
-                    'position: relative !important;' +
-                    'box-shadow: 0 4px 15px rgba(0,0,0,0.2) !important;'
-                );
-                existingEl.textContent = message;
-                
-                // Force reflow and repaint
-                void existingEl.offsetWidth;
-                existingEl.style.display = 'block';
-                
-                // Check if it's visible
-                setTimeout(() => {
-                    const rect = existingEl.getBoundingClientRect();
-                    console.log('Existing element dimensions:', rect.width + 'x' + rect.height);
-                    
-                    if (rect.width < 10 || rect.height < 10) {
-                        console.log('Existing element too small, creating emergency element...');
-                        createEmergencyElement(message, bgColor, borderColor, textColor);
-                    }
-                }, 50);
-                
-            } else {
-                console.log('No existing element found, creating emergency element...');
-                createEmergencyElement(message, bgColor, borderColor, textColor);
-            }
-            
-            console.log('=== showConnectionStatus() completed ===');
-        }
-        
-        function createEmergencyElement(message, bgColor, borderColor, textColor) {
-            // Create emergency element that's guaranteed to be visible
-            const emergencyDiv = document.createElement('div');
-            emergencyDiv.id = 'connectionStatus-emergency';
-            emergencyDiv.textContent = message;
-            
-            // Apply maximum visibility styles
-            emergencyDiv.setAttribute('style',
-                'position: fixed !important; ' +
-                'top: 80px !important; ' +
-                'left: 50% !important; ' +
-                'transform: translateX(-50%) !important; ' +
-                'background: ' + bgColor + ' !important; ' +
-                'color: ' + textColor + ' !important; ' +
-                'padding: 15px 30px !important; ' +
-                'border-radius: 10px !important; ' +
-                'font-weight: bold !important; ' +
-                'font-size: 18px !important; ' +
-                'z-index: 10000 !important; ' +
-                'box-shadow: 0 6px 25px rgba(0,0,0,0.3) !important;' +
-                'border: 3px solid ' + borderColor + ' !important;' +
-                'min-width: 250px !important;' +
-                'text-align: center !important;' +
-                'animation: pulse 2s infinite !important;'
-            );
-            
-            // Add pulse animation
-            const style = document.createElement('style');
-            style.textContent = `
-                @keyframes pulse {
-                    0% { box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.7); }
-                    70% { box-shadow: 0 0 0 15px rgba(255, 152, 0, 0); }
-                    100% { box-shadow: 0 0 0 0 rgba(255, 152, 0, 0); }
-                }
-            `;
-            document.head.appendChild(style);
-            
-            document.body.appendChild(emergencyDiv);
-            window._emergencyStatus = emergencyDiv;
-            window._emergencyStyle = style;
-            
-            console.log('Emergency element created with ID:', emergencyDiv.id);
         }
         
         function hideConnectionStatus() {
-            console.log('=== hideConnectionStatus() called ===');
-            
-            // Hide regular element
             const statusEl = document.getElementById('connectionStatus');
             if (statusEl) {
                 statusEl.style.display = 'none';
-                statusEl.style.visibility = 'hidden';
                 statusEl.style.opacity = '0';
-                statusEl.style.height = '0';
-                statusEl.style.padding = '0';
-                statusEl.style.margin = '0';
+                statusEl.style.visibility = 'hidden';
             }
-            
-            // Hide and remove any emergency element
-            if (window._emergencyStatus) {
-                window._emergencyStatus.style.display = 'none';
-                window._emergencyStatus.remove();
-                window._emergencyStatus = null;
-            }
-            
-            // Remove emergency style
-            if (window._emergencyStyle) {
-                window._emergencyStyle.remove();
-                window._emergencyStyle = null;
-            }
-            
-            console.log('=== hideConnectionStatus() completed ===');
-        }
-        
-        // ==== ULTIMATE TEST FUNCTION ====
-        function ultimateStatusTest() {
-            console.clear();
-            console.log('=== 🔥 ULTIMATE STATUS TEST 🔥 ===');
-            console.log('Testing on:', navigator.userAgent);
-            console.log('Time:', new Date().toISOString());
-            
-            // Remove any existing test elements
-            const testEl = document.getElementById('status-test-element');
-            if (testEl) testEl.remove();
-            
-            // Create a test element with extreme styling
-            const testDiv = document.createElement('div');
-            testDiv.id = 'status-test-element';
-            testDiv.textContent = '🔥 THIS TEXT MUST BE VISIBLE ON ALL DEVICES 🔥';
-            testDiv.setAttribute('style',
-                'position: fixed !important; ' +
-                'top: 150px !important; ' +
-                'left: 50% !important; ' +
-                'transform: translateX(-50%) !important; ' +
-                'background: #FF0000 !important; ' +
-                'color: #FFFFFF !important; ' +
-                'padding: 20px 40px !important; ' +
-                'border-radius: 15px !important; ' +
-                'font-weight: bold !important; ' +
-                'font-size: 20px !important; ' +
-                'z-index: 10001 !important; ' +
-                'box-shadow: 0 8px 30px rgba(255,0,0,0.5) !important;' +
-                'border: 4px solid #FFFF00 !important;' +
-                'text-align: center !important;' +
-                'animation: flashTest 0.5s infinite !important;'
-            );
-            
-            // Add flashing animation
-            const flashStyle = document.createElement('style');
-            flashStyle.textContent = `
-                @keyframes flashTest {
-                    0%, 100% { opacity: 1; transform: translateX(-50%) scale(1); }
-                    50% { opacity: 0.7; transform: translateX(-50%) scale(1.05); }
-                }
-            `;
-            document.head.appendChild(flashStyle);
-            
-            document.body.appendChild(testDiv);
-            
-            // Verify visibility
-            setTimeout(() => {
-                const rect = testDiv.getBoundingClientRect();
-                console.log('Test element dimensions:', rect.width + 'x' + rect.height);
-                console.log('Visible on screen:', rect.width > 100 && rect.height > 30);
-                
-                if (rect.width < 100 || rect.height < 30) {
-                    alert('🚨 CRITICAL: Test element is too small! This browser has rendering issues.');
-                    console.error('Test element too small:', rect);
-                } else {
-                    console.log('✅ Test element is properly sized');
-                }
-                
-                // Clean up after 5 seconds
-                setTimeout(() => {
-                    testDiv.remove();
-                    flashStyle.remove();
-                    console.log('=== TEST COMPLETE ===');
-                }, 5000);
-            }, 1000);
         }
         
         // ==== MODIFIED: Monitor when hangup button becomes active (call connected) ====
@@ -991,10 +817,10 @@
                     // Call is connected, update status
                     showConnectionStatus('Connected', 'connected');
                     
-                    // Hide status after 3 seconds
+                    // Hide status after 2 seconds (reduced from 3)
                     setTimeout(() => {
                         hideConnectionStatus();
-                    }, 3000);
+                    }, 2000);
                     
                     // Stop monitoring since call is connected
                     stopMonitoring();
