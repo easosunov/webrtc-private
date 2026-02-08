@@ -494,6 +494,11 @@
         <source src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZ3620YQQAAAAAAA==" type="audio/wav">
     </audio>
     
+    <!-- Connection beeper (quiet phone dial tone) - Much shorter, efficient version -->
+    <audio id="connectionBeeper" preload="auto" loop>
+        <source src="data:audio/wav;base64,UklGRnoAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=" type="audio/wav">
+    </audio>
+    
     <script>
         // Keypad functionality
         let accessCode = '';
@@ -572,6 +577,105 @@
                     }, 150);
                 }
             }
+        }
+        
+        // Connection beeper functions
+        let beeperInterval = null;
+        
+        function startConnectionBeeper() {
+            const beeper = document.getElementById('connectionBeeper');
+            if (beeper) {
+                // Set volume to low (20%)
+                beeper.volume = 0.2;
+                // Start playing
+                beeper.play().catch(e => {
+                    console.log('Beeper play failed (user may need to interact first):', e);
+                });
+                console.log('Connection beeper started');
+            }
+        }
+        
+        function stopConnectionBeeper() {
+            const beeper = document.getElementById('connectionBeeper');
+            if (beeper) {
+                beeper.pause();
+                beeper.currentTime = 0;
+                console.log('Connection beeper stopped');
+            }
+            
+            if (beeperInterval) {
+                clearInterval(beeperInterval);
+                beeperInterval = null;
+            }
+        }
+        
+        // Modified call functions with beeper
+        function callAdminWithBeeper() {
+            // Start the connection beeper
+            startConnectionBeeper();
+            // Call the original function
+            callAdmin();
+        }
+        
+        function hangupWithBeeper() {
+            // Stop the connection beeper
+            stopConnectionBeeper();
+            // Call the original function
+            hangup();
+        }
+        
+        // Override the original call functions
+        window.callAdmin = function() {
+            // Check if admin is available
+            if (!CONFIG.adminSocketId) {
+                UIManager.showError('Admin is offline');
+                return;
+            }
+            
+            // Start connection beeper
+            startConnectionBeeper();
+            
+            // Call the original function from call-manager
+            CallManager.callUser('admin', CONFIG.adminSocketId);
+        };
+        
+        // Monitor when hangup button becomes active (call connected)
+        function monitorCallConnection() {
+            // Check every 500ms for hangup button state
+            const checkInterval = setInterval(() => {
+                const hangupBtn = document.querySelector('.btn-hangup.active');
+                if (hangupBtn && !hangupBtn.disabled) {
+                    // Call is connected, stop the beeper
+                    stopConnectionBeeper();
+                    clearInterval(checkInterval);
+                    console.log('Call connected, beeper stopped');
+                }
+            }, 500);
+            
+            // Also stop checking after 60 seconds (call timeout)
+            setTimeout(() => {
+                clearInterval(checkInterval);
+            }, 60000);
+        }
+        
+        // Hook into the original callUser function to start monitoring
+        const originalCallUser = window.callUser;
+        if (originalCallUser) {
+            window.callUser = function(username, socketId) {
+                startConnectionBeeper();
+                monitorCallConnection();
+                return originalCallUser(username, socketId);
+            };
+        }
+        
+        // Also hook into callAdmin function if it's redefined elsewhere
+        const originalGlobalCallAdmin = window.callAdmin;
+        if (originalGlobalCallAdmin && originalGlobalCallAdmin.toString() !== window.callAdmin.toString()) {
+            window.callAdmin = function() {
+                startConnectionBeeper();
+                monitorCallConnection();
+                return originalGlobalCallAdmin();
+            };
         }
         
         // Play Videos function
@@ -724,7 +828,7 @@
                         hangupBtn.classList.remove('key-active');
                     }, 150);
                     
-                    // Execute hangup
+                    // Execute hangup (which will stop the beeper)
                     hangup();
                     return;
                 }
