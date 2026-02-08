@@ -14,6 +14,15 @@ const CallManager = {
         console.log(`Calling ${userToCall} (${socketToCall})...`);
         UIManager.showStatus(`Calling ${userToCall}...`);
         
+        // === ADDED: Show connecting status for ALL calls (User AND Admin) ===
+        console.log('=== Showing Connecting status for call ===');
+        if (window.showConnectionStatus) {
+            window.showConnectionStatus('Connecting...', 'connecting');
+        }
+        if (window.monitorCallConnection) {
+            window.monitorCallConnection();
+        }
+        
         // Set call parameters
         CONFIG.targetUsername = userToCall;
         CONFIG.targetSocketId = socketToCall;
@@ -122,6 +131,15 @@ const CallManager = {
         UIManager.showStatus('Answering call...');
         UIManager.updateCallButtons();
         
+        // === ADDED: Show connecting status when answering ===
+        console.log('=== Showing Connecting status for answer ===');
+        if (window.showConnectionStatus) {
+            window.showConnectionStatus('Connecting...', 'connecting');
+        }
+        if (window.monitorCallConnection) {
+            window.monitorCallConnection();
+        }
+        
         // Ensure permissions
         const hasPerms = await AuthManager.ensureMediaPermissions();
         if (!hasPerms) {
@@ -148,7 +166,7 @@ const CallManager = {
     rejectCall() {
         console.log('=== CallManager.rejectCall() - stopping monitoring ===');
         
-        // ADDED: Clean up status monitoring
+        // Clean up status monitoring
         if (typeof stopMonitoring !== 'undefined') {
             stopMonitoring();
         }
@@ -201,7 +219,7 @@ const CallManager = {
     handleCallRejected(data) {
         console.log('=== CallManager.handleCallRejected() - stopping monitoring ===');
         
-        // ADDED: Clean up status monitoring
+        // Clean up status monitoring
         if (typeof stopMonitoring !== 'undefined') {
             stopMonitoring();
         }
@@ -217,7 +235,7 @@ const CallManager = {
     handleCallEnded(data) {
         console.log('=== CallManager.handleCallEnded() - stopping monitoring ===');
         
-        // ADDED: Clean up status monitoring
+        // Clean up status monitoring
         if (typeof stopMonitoring !== 'undefined') {
             stopMonitoring();
         }
@@ -233,7 +251,7 @@ const CallManager = {
     hangup() {
         console.log('=== CallManager.hangup() - stopping monitoring ===');
         
-        // ADDED: Clean up status monitoring
+        // Clean up status monitoring
         if (typeof stopMonitoring !== 'undefined') {
             stopMonitoring();
         }
