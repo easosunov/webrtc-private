@@ -1,7 +1,7 @@
-// js/auth-manager.js - RESTORE TO WORKING VERSION
+// js/auth-manager.js - ORIGINAL WORKING VERSION
 const AuthManager = {
     async login() {
-        // Get access code from the hidden input
+        // Get access code from hidden input
         const accessCode = CONFIG.elements.accessCodeInput ? 
                           CONFIG.elements.accessCodeInput.value.trim() : '';
         
@@ -13,11 +13,7 @@ const AuthManager = {
         console.log('Login attempt with code:', accessCode);
         UIManager.showStatus('Logging in...');
         
-        // Clear the input after sending
-        if (CONFIG.elements.accessCodeInput) {
-            CONFIG.elements.accessCodeInput.value = '';
-        }
-        
+        // Send to server
         WebSocketClient.sendToServer({
             type: 'login',
             accessCode: accessCode
@@ -25,42 +21,39 @@ const AuthManager = {
     },
     
     handleLoginSuccess(data) {
-        CONFIG.myId = data.userId || data.socketId;
-        CONFIG.myUsername = data.username || data.displayName;
+        CONFIG.myId = data.socketId || data.userId;
+        CONFIG.myUsername = data.displayName || data.username;
         CONFIG.isAdmin = data.isAdmin || false;
-        CONFIG.adminSocketId = data.adminSocketId || null;
         
         console.log(`✅ Logged in: ${CONFIG.myUsername}, Admin: ${CONFIG.isAdmin}`);
-        console.log(`📍 Admin socket: ${CONFIG.adminSocketId || 'No admin online'}`);
         
         UIManager.showCallScreen();
-        UIManager.showStatus(`Logged in as ${CONFIG.myUsername} ${CONFIG.isAdmin ? '(Admin)' : ''}`);
+        UIManager.showStatus(`Logged in as ${CONFIG.myUsername}`);
         
-        // Check permissions for local preview
+        // Get media for preview
         setTimeout(async () => {
-            await this.checkPermissions();
-            await this.ensureMediaPermissions(); // For preview
+            await this.ensureMediaPermissions();
         }, 100);
     },
     
     logout() {
         console.log('Logging out...');
         
-        // Send logout to server
+        // Send logout if connected
         if (CONFIG.ws && CONFIG.ws.readyState === WebSocket.OPEN) {
             WebSocketClient.sendToServer({ type: 'logout' });
         }
         
-        // Cleanup call if active
+        // Cleanup
         CallManager.cleanupCall();
         
-        // Stop media streams
         if (CONFIG.localStream) {
             CONFIG.localStream.getTracks().forEach(track => track.stop());
             CONFIG.localStream = null;
         }
         
-        // Reset video elements
+        // Reset UI
+        UIManager.showLoginScreen();
         if (CONFIG.elements.localVideo) {
             CONFIG.elements.localVideo.srcObject = null;
         }
@@ -68,76 +61,33 @@ const AuthManager = {
             CONFIG.elements.remoteVideo.srcObject = null;
         }
         
-        // Reset all state
+        // Reset state
         CONFIG.myId = null;
         CONFIG.myUsername = null;
         CONFIG.isAdmin = false;
         CONFIG.adminSocketId = null;
-        CONFIG.connectedUsers = [];
         CONFIG.hasMediaPermissions = false;
-        CONFIG.targetSocketId = null;
-        CONFIG.targetUsername = null;
-        CONFIG.isInCall = false;
-        CONFIG.isInitiator = false;
-        CONFIG.incomingCallFrom = null;
-        CONFIG.peerConnection = null;
-        CONFIG.remoteStream = null;
         
-        // Show login screen
-        UIManager.showLoginScreen();
         UIManager.showStatus('Logged out');
-        
-        // Clear access code display
-        if (typeof clearCode === 'function') {
-            clearCode();
-        }
     },
     
-    async checkPermissions() {
-        try {
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            CONFIG.hasMediaPermissions = devices.some(device => 
-                (device.kind === 'audioinput' || device.kind === 'videoinput') && 
-                device.deviceId !== ''
-            );
-            console.log('Media permissions:', CONFIG.hasMediaPermissions ? 'Granted' : 'Not granted');
-            return CONFIG.hasMediaPermissions;
-        } catch (error) {
-            console.log('Cannot check permissions:', error);
-            return false;
-        }
-    },
-    
-    async ensureMediaPermissions(forCall = false) {
-        if (CONFIG.hasMediaPermissions && CONFIG.localStream && !forCall) {
+    async ensureMediaPermissions() {
+        if (CONFIG.hasMediaPermissions && CONFIG.localStream) {
             return true;
         }
         
         try {
             UIManager.showStatus('Requesting camera/microphone access...');
             
-            let constraints;
-            
-            if (forCall) {
-                // For calls: Use ResolutionManager if available
-                if (typeof ResolutionManager !== 'undefined') {
-                    constraints = ResolutionManager.getCallConstraints();
-                } else {
-                    constraints = { audio: true, video: true };
+            const constraints = {
+                audio: true,
+                video: {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    frameRate: { ideal: 24 }
                 }
-            } else {
-                // For preview: Always use video with reasonable defaults
-                constraints = { 
-                    audio: true, 
-                    video: { 
-                        width: { ideal: 640 }, 
-                        height: { ideal: 480 }, 
-                        frameRate: { ideal: 24 } 
-                    } 
-                };
-            }
+            };
             
-            console.log('Getting media with constraints:', constraints);
             CONFIG.localStream = await navigator.mediaDevices.getUserMedia(constraints);
             CONFIG.hasMediaPermissions = true;
             
@@ -152,7 +102,6 @@ const AuthManager = {
             
         } catch (error) {
             console.error('Failed to get media permissions:', error);
-            UIManager.showError('Camera/microphone access is required for calls');
             return false;
         }
     }
