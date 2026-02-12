@@ -44,6 +44,48 @@ const WebSocketClient = {
             }
         });
     },
+
+
+// Add this at the top of WebSocketClient
+reconnectAttempts: 0,
+maxReconnectAttempts: 10,
+reconnectTimer: null,
+
+// Add this method
+scheduleReconnect() {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+        const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 30000);
+        console.log(`⏰ Reconnecting in ${delay/1000}s (attempt ${this.reconnectAttempts + 1})`);
+        
+        this.reconnectTimer = setTimeout(() => {
+            this.reconnectAttempts++;
+            this.connect().catch(() => this.scheduleReconnect());
+        }, delay);
+    } else {
+        console.error('❌ Max reconnection attempts reached');
+        UIManager.showError('Cannot connect to server. Please refresh the page.');
+    }
+},
+
+// Modify onclose handler:
+this.ws.onclose = () => {
+    console.log('WebSocket disconnected');
+    if (!CONFIG.isInCall && !CONFIG.isIntentionalLogout) {
+        UIManager.showStatus('Disconnected from server');
+        this.scheduleReconnect();  // ← ADD THIS LINE
+    }
+};
+
+// Modify onopen handler:
+this.ws.onopen = () => {
+    console.log('✅ WebSocket connected');
+    UIManager.showStatus('Connected to server');
+    this.reconnectAttempts = 0;  // ← ADD THIS LINE
+    resolve();
+};
+
     
     sendToServer(message) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -202,3 +244,4 @@ const WebSocketClient = {
 };
 
 window.WebSocketClient = WebSocketClient;
+
