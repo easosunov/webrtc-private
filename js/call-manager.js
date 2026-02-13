@@ -384,22 +384,53 @@ const CallManager = {
         UIManager.showStatus('Call rejected by ' + (data.rejecterName || 'user'));
     },
     
-    handleCallEnded(data) {
-        console.log('=== CallManager.handleCallEnded() - stopping monitoring ===');
-        
-        // Clean up status monitoring
-        if (typeof stopMonitoring !== 'undefined') {
-            stopMonitoring();
-        }
-        if (typeof hideConnectionStatus !== 'undefined') {
-            hideConnectionStatus();
-        }
-        
-        console.log('Call ended by remote:', data.endedByName || 'remote user');
-        this.cleanupCall();
-        UIManager.showStatus('Call ended by ' + (data.endedByName || 'remote user'));
-    },
+	handleCallEnded(data) {
+    console.log('=== CallManager.handleCallEnded() - stopping monitoring ===');
     
+    // Clean up status monitoring
+    if (typeof stopMonitoring !== 'undefined') {
+        stopMonitoring();
+    }
+    if (typeof hideConnectionStatus !== 'undefined') {
+        hideConnectionStatus();
+    }
+    
+    console.log('Call ended by remote:', data.endedByName || 'remote user');
+    
+    // ===== FORCE ADMIN UI UPDATE =====
+    CONFIG.isInCall = false;
+    
+    if (CONFIG.isAdmin) {
+        const adminHangupBtn = document.getElementById('adminHangupBtn');
+        if (adminHangupBtn) {
+            adminHangupBtn.disabled = true;
+            adminHangupBtn.className = 'btn-hangup';
+            console.log('Admin hangup button disabled');
+        }
+        
+        const adminCallBtn = document.getElementById('adminCallBtn');
+        if (adminCallBtn) {
+            adminCallBtn.disabled = false;
+            adminCallBtn.className = 'btn-call active';
+        }
+    } else {
+        const userHangupBtn = document.querySelector('.btn-hangup');
+        if (userHangupBtn) {
+            userHangupBtn.disabled = true;
+            userHangupBtn.className = 'btn-hangup';
+        }
+        
+        const userCallBtn = document.querySelector('.btn-call');
+        if (userCallBtn) {
+            userCallBtn.disabled = false;
+            userCallBtn.className = 'btn-call active';
+        }
+    }
+    
+    this.cleanupCall();
+    UIManager.showStatus('Call ended by ' + (data.endedByName || 'remote user'));
+}
+	
     hangup() {
         console.log('=== CallManager.hangup() - stopping monitoring ===');
         
