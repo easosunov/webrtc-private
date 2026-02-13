@@ -1,7 +1,8 @@
-// js/ui-manager.js - COMPLETE FIXED VERSION WITH NETWORK METRICS DISPLAY
+// js/ui-manager.js - COMPLETE FIXED VERSION WITH NETWORK METRICS DISPLAY AND DEBUG LOGGING
 const UIManager = {
     init() {
         console.log('Initializing UI Manager...');
+        DebugConsole?.info('UI', 'Initializing UI Manager');
         
         // Store ALL DOM elements needed by the application
         CONFIG.elements = {
@@ -57,6 +58,7 @@ const UIManager = {
         this.verifyElements();
         
         console.log('UI Manager initialized with', Object.keys(CONFIG.elements).length, 'elements');
+        DebugConsole?.success('UI', `Initialized with ${Object.keys(CONFIG.elements).length} elements`);
     },
     
     verifyElements() {
@@ -67,17 +69,20 @@ const UIManager = {
             if (!CONFIG.elements[elementName]) {
                 missingElements.push(elementName);
                 console.error(`Missing element: ${elementName}`);
+                DebugConsole?.error('UI', `Missing critical element: ${elementName}`);
             }
         }
         
         if (missingElements.length > 0) {
             console.error('Critical UI elements missing:', missingElements);
             this.showError(`UI elements missing: ${missingElements.join(', ')}. Please refresh the page.`);
+            DebugConsole?.error('UI', `Critical elements missing: ${missingElements.join(', ')}`);
         }
     },
     
     showStatus(message) {
         console.log('Status:', message);
+        DebugConsole?.info('Status', message);
         if (CONFIG.elements.statusEl) {
             CONFIG.elements.statusEl.textContent = message;
         }
@@ -85,6 +90,7 @@ const UIManager = {
     
     showError(message) {
         console.error('Error:', message);
+        DebugConsole?.error('Error', message);
         alert('Error: ' + message);
     },
     
@@ -93,6 +99,7 @@ const UIManager = {
         if (!CONFIG.isAdmin) return;
         
         console.log('Updating admin user dropdown with', users?.length || 0, 'users');
+        DebugConsole?.info('Users', `Received list of ${users?.length || 0} available users`);
         
         // Call the dropdown update function (defined in index.html)
         if (typeof window.updateAdminDropdown === 'function') {
@@ -134,6 +141,7 @@ const UIManager = {
     },
     
     showLoginScreen() {
+        DebugConsole?.info('UI', 'Showing login screen');
         if (CONFIG.elements.loginDiv) {
             CONFIG.elements.loginDiv.style.display = 'block';
         }
@@ -149,6 +157,7 @@ const UIManager = {
     
     resetLoginScreen() {
         console.log('Resetting login screen');
+        DebugConsole?.info('UI', 'Resetting login screen');
         
         // Reset the global accessCode variable (defined in index.html)
         if (typeof accessCode !== 'undefined') {
@@ -175,6 +184,7 @@ const UIManager = {
     },
     
     showCallScreen() {
+        DebugConsole?.info('UI', 'Showing call screen');
         if (CONFIG.elements.loginDiv) {
             CONFIG.elements.loginDiv.style.display = 'none';
         }
@@ -192,6 +202,7 @@ const UIManager = {
             // Update heading
             const heading = document.querySelector('h2');
             if (heading) heading.textContent = 'WebRTC - Administrator';
+            DebugConsole?.info('UI', 'Admin view activated');
         } else {
             if (CONFIG.elements.userView) {
                 CONFIG.elements.userView.style.display = 'block';
@@ -202,6 +213,7 @@ const UIManager = {
             // Update heading
             const heading = document.querySelector('h2');
             if (heading) heading.textContent = 'WebRTC - ' + (CONFIG.myUsername || 'User');
+            DebugConsole?.info('UI', `User view activated for ${CONFIG.myUsername}`);
         }
         
         // Update call buttons to reflect admin availability
@@ -218,7 +230,12 @@ const UIManager = {
             // Handle play() promise properly
             const playPromise = CONFIG.elements.localVideo.play();
             if (playPromise !== undefined) {
-                playPromise.catch(e => console.log('Local video play error:', e));
+                playPromise
+                    .then(() => DebugConsole?.success('Video', 'Local video playing'))
+                    .catch(e => {
+                        console.log('Local video play error:', e);
+                        DebugConsole?.warning('Video', 'Local video play prevented: ' + e.message);
+                    });
             }
         }
         
@@ -228,7 +245,12 @@ const UIManager = {
             // Handle play() promise properly
             const playPromise = CONFIG.elements.remoteVideo.play();
             if (playPromise !== undefined) {
-                playPromise.catch(e => console.log('Remote video play error:', e));
+                playPromise
+                    .then(() => DebugConsole?.success('Video', 'Remote video playing'))
+                    .catch(e => {
+                        console.log('Remote video play error:', e);
+                        DebugConsole?.warning('Video', 'Remote video play prevented: ' + e.message);
+                    });
             }
         }
     },
@@ -245,12 +267,14 @@ const UIManager = {
         // Also update status in main status area
         if (isOnline) {
             this.showStatus('Admin is online - Ready to call');
+            DebugConsole?.success('Admin', 'Admin is online');
         } else {
             this.showStatus('Admin is offline - Cannot make calls');
+            DebugConsole?.warning('Admin', 'Admin is offline');
         }
     },
     
-    // ===== NEW: Display real network metrics =====
+    // ===== Display real network metrics =====
     showNetworkMetrics(metrics) {
         const indicator = CONFIG.elements.networkIndicator;
         if (!indicator) return;
@@ -286,9 +310,16 @@ Reliability: ${metrics.reliability}%`;
         // Also log to console occasionally for debugging
         if (metrics.latency > 400) {
             console.warn('⚠️ High latency detected:', metrics.latency, 'ms');
+            DebugConsole?.warning('Network', `High latency: ${metrics.latency}ms`);
         }
         if (metrics.packetLoss > 10) {
             console.warn('⚠️ Packet loss detected:', metrics.packetLoss, '%');
+            DebugConsole?.warning('Network', `Packet loss: ${metrics.packetLoss}%`);
+        }
+        
+        // Log network metrics periodically
+        if (Math.random() < 0.1) { // ~10% chance to log
+            DebugConsole?.network('Network', `Latency: ${metrics.latency}ms, Jitter: ${metrics.jitter}ms, Loss: ${metrics.packetLoss}%, BW: ${metrics.bandwidth}Mbps`);
         }
     }
 };
