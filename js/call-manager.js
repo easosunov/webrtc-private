@@ -424,38 +424,67 @@ const CallManager = {
         this.cleanupCall();
     },
     
-    cleanupCall() {
-        console.log('Cleaning up call...');
-        
-        // Stop any notification sound
-        this.stopNotificationSound();
-        
-        CONFIG.isProcessingAnswer = false;
-        
-        if (CONFIG.peerConnection) {
-            CONFIG.peerConnection.close();
-            CONFIG.peerConnection = null;
-        }
-        
-        if (CONFIG.elements.remoteVideo && CONFIG.elements.remoteVideo.srcObject) {
-            CONFIG.elements.remoteVideo.srcObject.getTracks().forEach(track => track.stop());
-            CONFIG.elements.remoteVideo.srcObject = null;
-        }
-        
-        CONFIG.targetSocketId = null;
-        CONFIG.targetUsername = null;
-        CONFIG.isInCall = false;
-        CONFIG.isInitiator = false;
-        CONFIG.incomingCallFrom = null;
-        CONFIG.iceCandidatesQueue = [];
-        
-        // Remove notification if exists
-        const notification = document.getElementById('incoming-call-notification');
-        if (notification) notification.remove();
-        
-        UIManager.showStatus('Ready');
-        UIManager.updateCallButtons();
+cleanupCall() {
+    console.log('Cleaning up call...');
+    
+    // Stop any notification sound
+    this.stopNotificationSound();
+    
+    CONFIG.isProcessingAnswer = false;
+    CONFIG.isInCall = false;  // ← This is critical
+    
+    if (CONFIG.peerConnection) {
+        CONFIG.peerConnection.close();
+        CONFIG.peerConnection = null;
     }
+    
+    if (CONFIG.elements.remoteVideo && CONFIG.elements.remoteVideo.srcObject) {
+        CONFIG.elements.remoteVideo.srcObject.getTracks().forEach(track => track.stop());
+        CONFIG.elements.remoteVideo.srcObject = null;
+    }
+    
+    CONFIG.targetSocketId = null;
+    CONFIG.targetUsername = null;
+    CONFIG.isInitiator = false;
+    CONFIG.incomingCallFrom = null;
+    CONFIG.iceCandidatesQueue = [];
+    
+    // Remove notification if exists
+    const notification = document.getElementById('incoming-call-notification');
+    if (notification) notification.remove();
+    
+    // ===== FORCE UI UPDATE FOR ADMIN HANGUP BUTTON =====
+    if (CONFIG.isAdmin) {
+        const adminHangupBtn = document.getElementById('adminHangupBtn');
+        if (adminHangupBtn) {
+            adminHangupBtn.disabled = true;
+            adminHangupBtn.className = 'btn-hangup';
+            console.log('Admin hangup button disabled');
+        }
+        
+        const adminCallBtn = document.getElementById('adminCallBtn');
+        if (adminCallBtn) {
+            adminCallBtn.disabled = false;
+            adminCallBtn.className = 'btn-call active';
+        }
+    } else {
+        const userHangupBtn = document.querySelector('.btn-hangup');
+        if (userHangupBtn) {
+            userHangupBtn.disabled = true;
+            userHangupBtn.className = 'btn-hangup';
+        }
+        
+        const userCallBtn = document.querySelector('.btn-call');
+        if (userCallBtn) {
+            userCallBtn.disabled = false;
+            userCallBtn.className = 'btn-call active';
+        }
+    }
+    
+    UIManager.showStatus('Ready');
+    // UIManager.updateCallButtons(); // This may be redundant now
+}
+
 };
 
 window.CallManager = CallManager;
