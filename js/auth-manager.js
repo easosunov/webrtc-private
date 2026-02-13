@@ -1,30 +1,9 @@
 // js/auth-manager.js - COMPLETE FIXED VERSION
 const AuthManager = {
-    async login() {
-        console.log('Login function called');
+    async login(accessCode) {
+        console.log('Login function called with:', accessCode);
         
-        // Get access code directly from the keypad interface
-        const hiddenAccessCodeInput = document.getElementById('hiddenAccessCode');
-        let accessCode = '';
-        
-        if (hiddenAccessCodeInput && hiddenAccessCodeInput.value) {
-            accessCode = hiddenAccessCodeInput.value.trim();
-        }
-        
-        // Fallback to display text
-        if (!accessCode) {
-            const accessCodeDisplay = document.getElementById('accessCodeDisplay');
-            const displayText = accessCodeDisplay?.textContent || '';
-            if (displayText && displayText !== 'Enter Code') {
-                accessCode = displayText.trim();
-            }
-        }
-        
-        // Also check global variable as last resort
-        if (!accessCode && window.accessCode) {
-            accessCode = window.accessCode.trim();
-        }
-        
+        // Get access code directly from parameter instead of DOM
         if (!accessCode || accessCode === 'Enter Code') {
             UIManager.showError('Please enter an access code');
             return;
@@ -76,16 +55,22 @@ const AuthManager = {
         
         UIManager.showLoginScreen();
         
-        // Clear the access code
-        const accessCodeDisplay = document.getElementById('accessCodeDisplay');
-        const hiddenAccessCodeInput = document.getElementById('hiddenAccessCode');
-        if (accessCodeDisplay) accessCodeDisplay.textContent = 'Enter Code';
-        if (hiddenAccessCodeInput) hiddenAccessCodeInput.value = '';
-        
-        // Reset global accessCode variable
-        if (window.accessCode !== undefined) {
-            window.accessCode = '';
+        // ===== ADDED: Reset the access code in index.html =====
+        if (typeof accessCode !== 'undefined') {
+            accessCode = '';
+            if (typeof updateDisplay === 'function') {
+                updateDisplay();
+            }
         }
+        // ====================================================
+        
+        // Reset CONFIG
+        CONFIG.myId = null;
+        CONFIG.myUsername = null;
+        CONFIG.isAdmin = false;
+        CONFIG.adminSocketId = null;
+        CONFIG.connectedUsers = [];
+        CONFIG.hasMediaPermissions = false;
         
         if (CONFIG.elements && CONFIG.elements.localVideo) {
             CONFIG.elements.localVideo.srcObject = null;
@@ -93,14 +78,6 @@ const AuthManager = {
         if (CONFIG.elements && CONFIG.elements.remoteVideo) {
             CONFIG.elements.remoteVideo.srcObject = null;
         }
-        
-        // Reset state
-        CONFIG.myId = null;
-        CONFIG.myUsername = null;
-        CONFIG.isAdmin = false;
-        CONFIG.adminSocketId = null;
-        CONFIG.connectedUsers = [];
-        CONFIG.hasMediaPermissions = false;
         
         UIManager.showStatus('Logged out');
     },
@@ -120,61 +97,59 @@ const AuthManager = {
         }
     },
     
-
-async ensureMediaPermissions() {
-    if (CONFIG.hasMediaPermissions && CONFIG.localStream) {
-        return true;
-    }
-    
-    try {
-        UIManager.showStatus('Requesting camera/microphone access...');
-        
-        // Use dynamic constraints from Resolution Manager if available
-        let constraints;
-        if (window.ResolutionManager && typeof ResolutionManager.getStreamWithCurrentResolution === 'function') {
-            // Let ResolutionManager handle stream creation with current resolution
-            CONFIG.localStream = await ResolutionManager.getStreamWithCurrentResolution();
-            CONFIG.hasMediaPermissions = true;
-            
-            if (CONFIG.elements && CONFIG.elements.localVideo) {
-                CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
-                CONFIG.elements.localVideo.muted = true;
-                CONFIG.elements.localVideo.play().catch(e => console.log('Local video play:', e));
-            }
-            
-            console.log('✅ Media permissions granted with resolution control');
-            return true;
-        } else {
-            // Fallback to original hardcoded constraints
-            constraints = {
-                audio: true,
-                video: {
-                    width: { ideal: 640 },
-                    height: { ideal: 480 },
-                    frameRate: { ideal: 24 }
-                }
-            };
-            
-            CONFIG.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-            CONFIG.hasMediaPermissions = true;
-            
-            if (CONFIG.elements && CONFIG.elements.localVideo) {
-                CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
-                CONFIG.elements.localVideo.muted = true;
-                CONFIG.elements.localVideo.play().catch(e => console.log('Local video play:', e));
-            }
-            
-            console.log('✅ Media permissions granted');
+    async ensureMediaPermissions() {
+        if (CONFIG.hasMediaPermissions && CONFIG.localStream) {
             return true;
         }
         
-    } catch (error) {
-        console.error('Failed to get media permissions:', error);
-        UIManager.showError('Camera/microphone access is required for calls');
-        return false;
+        try {
+            UIManager.showStatus('Requesting camera/microphone access...');
+            
+            // Use dynamic constraints from Resolution Manager if available
+            let constraints;
+            if (window.ResolutionManager && typeof ResolutionManager.getStreamWithCurrentResolution === 'function') {
+                // Let ResolutionManager handle stream creation with current resolution
+                CONFIG.localStream = await ResolutionManager.getStreamWithCurrentResolution();
+                CONFIG.hasMediaPermissions = true;
+                
+                if (CONFIG.elements && CONFIG.elements.localVideo) {
+                    CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
+                    CONFIG.elements.localVideo.muted = true;
+                    CONFIG.elements.localVideo.play().catch(e => console.log('Local video play:', e));
+                }
+                
+                console.log('✅ Media permissions granted with resolution control');
+                return true;
+            } else {
+                // Fallback to original hardcoded constraints
+                constraints = {
+                    audio: true,
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        frameRate: { ideal: 24 }
+                    }
+                };
+                
+                CONFIG.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                CONFIG.hasMediaPermissions = true;
+                
+                if (CONFIG.elements && CONFIG.elements.localVideo) {
+                    CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
+                    CONFIG.elements.localVideo.muted = true;
+                    CONFIG.elements.localVideo.play().catch(e => console.log('Local video play:', e));
+                }
+                
+                console.log('✅ Media permissions granted');
+                return true;
+            }
+            
+        } catch (error) {
+            console.error('Failed to get media permissions:', error);
+            UIManager.showError('Camera/microphone access is required for calls');
+            return false;
+        }
     }
-}
-
 };
 
 window.AuthManager = AuthManager;
