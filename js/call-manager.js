@@ -1,4 +1,4 @@
-// js/call-manager.js - COMPLETE FIXED VERSION
+// js/call-manager.js - MINIMAL FIX VERSION
 const CallManager = {
     // Add audio element for notification sound
     notificationAudio: null,
@@ -54,15 +54,6 @@ const CallManager = {
         });
         
         console.log('Waiting for user to accept call...');
-    },
-    
-    // Alias for callUser to maintain compatibility
-    callAdmin() {
-        if (!CONFIG.adminSocketId) {
-            UIManager.showError('Admin is not available');
-            return;
-        }
-        this.callUser('Administrator', CONFIG.adminSocketId);
     },
     
     handleCallInitiated(data) {
@@ -405,37 +396,6 @@ const CallManager = {
         }
         
         console.log('Call ended by remote:', data.endedByName || 'remote user');
-        
-        // ===== FORCE ADMIN UI UPDATE =====
-        CONFIG.isInCall = false;
-        
-        if (CONFIG.isAdmin) {
-            const adminHangupBtn = document.getElementById('adminHangupBtn');
-            if (adminHangupBtn) {
-                adminHangupBtn.disabled = true;
-                adminHangupBtn.className = 'btn-hangup';
-                console.log('Admin hangup button disabled');
-            }
-            
-            const adminCallBtn = document.getElementById('adminCallBtn');
-            if (adminCallBtn) {
-                adminCallBtn.disabled = false;
-                adminCallBtn.className = 'btn-call active';
-            }
-        } else {
-            const userHangupBtn = document.querySelector('.btn-hangup');
-            if (userHangupBtn) {
-                userHangupBtn.disabled = true;
-                userHangupBtn.className = 'btn-hangup';
-            }
-            
-            const userCallBtn = document.querySelector('.btn-call');
-            if (userCallBtn) {
-                userCallBtn.disabled = false;
-                userCallBtn.className = 'btn-call active';
-            }
-        }
-        
         this.cleanupCall();
         UIManager.showStatus('Call ended by ' + (data.endedByName || 'remote user'));
     },
@@ -471,7 +431,6 @@ const CallManager = {
         this.stopNotificationSound();
         
         CONFIG.isProcessingAnswer = false;
-        CONFIG.isInCall = false;  // ← Explicitly set this
         
         if (CONFIG.peerConnection) {
             CONFIG.peerConnection.close();
@@ -485,6 +444,7 @@ const CallManager = {
         
         CONFIG.targetSocketId = null;
         CONFIG.targetUsername = null;
+        CONFIG.isInCall = false;
         CONFIG.isInitiator = false;
         CONFIG.incomingCallFrom = null;
         CONFIG.iceCandidatesQueue = [];
@@ -493,37 +453,9 @@ const CallManager = {
         const notification = document.getElementById('incoming-call-notification');
         if (notification) notification.remove();
         
-        // ===== FORCE UI UPDATE FOR HANGUP BUTTON =====
-        if (CONFIG.isAdmin) {
-            const adminHangupBtn = document.getElementById('adminHangupBtn');
-            if (adminHangupBtn) {
-                adminHangupBtn.disabled = true;
-                adminHangupBtn.className = 'btn-hangup';
-            }
-            
-            const adminCallBtn = document.getElementById('adminCallBtn');
-            if (adminCallBtn) {
-                adminCallBtn.disabled = false;
-                adminCallBtn.className = 'btn-call active';
-            }
-        } else {
-            const userHangupBtn = document.querySelector('.btn-hangup');
-            if (userHangupBtn) {
-                userHangupBtn.disabled = true;
-                userHangupBtn.className = 'btn-hangup';
-            }
-            
-            const userCallBtn = document.querySelector('.btn-call');
-            if (userCallBtn) {
-                userCallBtn.disabled = false;
-                userCallBtn.className = 'btn-call active';
-            }
-        }
-        
         UIManager.showStatus('Ready');
         UIManager.updateCallButtons();
     }
 };
 
-// Make sure CallManager is available globally
 window.CallManager = CallManager;
