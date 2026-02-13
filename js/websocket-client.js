@@ -1,4 +1,4 @@
-// js/websocket-client.js - COMPLETE WITH NETWORK QUALITY MEASUREMENT
+// js/websocket-client.js - COMPLETE WITH REAL NETWORK METRICS
 const WebSocketClient = {
     // Add these new properties
     pingInterval: null,
@@ -7,10 +7,17 @@ const WebSocketClient = {
     reconnectDelay: 1000,
     isIntentionalClose: false,
     
-    // Network quality measurement properties
+    // Network metrics
     pingTimes: [],
     lastPingTime: null,
-    networkQuality: 'good',
+    lastMetricsUpdate: 0,
+    metrics: {
+        latency: 0,
+        jitter: 0,
+        packetLoss: 0,
+        bandwidth: 0,
+        reliability: 100
+    },
     
     connect() {
         return new Promise((resolve, reject) => {
@@ -93,37 +100,59 @@ const WebSocketClient = {
         }, delay);
     },
     
-    // ===== NEW: Update network quality based on latency =====
-    updateNetworkQualityFromLatency(latency) {
-        // Keep last 5 ping times
+    // ===== NEW: Update network metrics based on latency =====
+    updateNetworkMetrics(latency) {
+        // Keep last 10 ping times
         this.pingTimes.push(latency);
-        if (this.pingTimes.length > 5) {
+        if (this.pingTimes.length > 10) {
             this.pingTimes.shift();
         }
         
         // Calculate average latency
         const avgLatency = this.pingTimes.reduce((a, b) => a + b, 0) / this.pingTimes.length;
         
-        // Determine quality
-        let quality;
-        if (avgLatency < 100) {
-            quality = 'excellent';
-        } else if (avgLatency < 200) {
-            quality = 'good';
-        } else if (avgLatency < 400) {
-            quality = 'fair';
-        } else {
-            quality = 'poor';
+        // Calculate jitter (variation in latency)
+        let jitter = 0;
+        if (this.pingTimes.length > 1) {
+            let sumDiff = 0;
+            for (let i = 1; i < this.pingTimes.length; i++) {
+                sumDiff += Math.abs(this.pingTimes[i] - this.pingTimes[i-1]);
+            }
+            jitter = sumDiff / (this.pingTimes.length - 1);
         }
         
-        // Only update if changed
-        if (quality !== this.networkQuality) {
-            this.networkQuality = quality;
-            console.log(`📊 Network quality: ${quality} (${Math.round(avgLatency)}ms)`);
-            
-            if (UIManager.showNetworkQuality) {
-                UIManager.showNetworkQuality(quality);
+        // Estimate packet loss based on reconnection attempts
+        const packetLoss = this.reconnectAttempts > 0 ? Math.min(30, this.reconnectAttempts * 5) : 0;
+        
+        // Estimate bandwidth based on latency (rough approximation)
+        // Lower latency generally means higher bandwidth
+        let bandwidth;
+        if (avgLatency < 50) bandwidth = 50; // 50+ Mbps
+        else if (avgLatency < 100) bandwidth = 25; // 25 Mbps
+        else if (avgLatency < 200) bandwidth = 10; // 10 Mbps
+        else if (avgLatency < 400) bandwidth = 5; // 5 Mbps
+        else bandwidth = 2; // 2 Mbps
+        
+        // Calculate reliability score (0-100)
+        const reliability = Math.max(0, 100 - (avgLatency / 10) - (jitter * 2) - packetLoss);
+        
+        // Update metrics
+        this.metrics = {
+            latency: Math.round(avgLatency),
+            jitter: Math.round(jitter),
+            packetLoss: Math.round(packetLoss),
+            bandwidth: bandwidth,
+            reliability: Math.min(100, Math.max(0, Math.round(reliability)))
+        };
+        
+        // Update UI every 5 seconds max to avoid flicker
+        const now = Date.now();
+        if (now - this.lastMetricsUpdate > 5000) {
+            this.lastMetricsUpdate = now;
+            if (UIManager.showNetworkMetrics) {
+                UIManager.showNetworkMetrics(this.metrics);
             }
+            console.log('📊 Network metrics:', this.metrics);
         }
     },
     
@@ -254,7 +283,7 @@ const WebSocketClient = {
                     console.log('🏓 Pong received');
                     if (this.lastPingTime) {
                         const latency = Date.now() - this.lastPingTime;
-                        this.updateNetworkQualityFromLatency(latency);
+                        this.updateNetworkMetrics(latency);
                     }
                     break;
                     
