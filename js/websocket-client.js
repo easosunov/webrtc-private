@@ -155,6 +155,12 @@ const WebSocketClient = {
                 case 'user-list':
                     UIManager.updateUsersList(message.users);
                     break;
+					
+				case 'ping':
+					console.log('🏓 Ping received from server');
+					// Send pong back to keep connection alive
+					this.sendToServer({ type: 'pong' });
+					break;
                     
                 case 'user-connected':
                     console.log(`👤 User connected: ${message.user?.username}`);
