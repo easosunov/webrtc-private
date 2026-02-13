@@ -1,4 +1,4 @@
-// js/ui-manager.js - COMPLETE FIXED VERSION
+// js/ui-manager.js - COMPLETE FIXED VERSION WITH LOGIN SCREEN RESET
 const UIManager = {
     init() {
         console.log('Initializing UI Manager...');
@@ -32,6 +32,9 @@ const UIManager = {
             
             // Access code input (if exists)
             accessCodeInput: document.getElementById('hiddenAccessCode'),
+            
+            // ADDED: Access code display element
+            accessCodeDisplay: document.getElementById('accessCodeDisplay'),
             
             // Call control buttons
             callAdminBtn: document.querySelector('.btn-call'),
@@ -127,6 +130,7 @@ const UIManager = {
         }
     },
     
+    // ===== MODIFIED: Added login screen reset functionality =====
     showLoginScreen() {
         if (CONFIG.elements.loginDiv) {
             CONFIG.elements.loginDiv.style.display = 'block';
@@ -134,7 +138,39 @@ const UIManager = {
         if (CONFIG.elements.callDiv) {
             CONFIG.elements.callDiv.style.display = 'none';
         }
+        
+        // Reset the login screen to pristine state
+        this.resetLoginScreen();
+        
         this.showStatus('Please login');
+    },
+    
+    // ===== NEW: Reset login screen to clean state =====
+    resetLoginScreen() {
+        console.log('Resetting login screen');
+        
+        // Reset the global accessCode variable (defined in index.html)
+        if (typeof accessCode !== 'undefined') {
+            accessCode = '';
+        }
+        
+        // Reset the access code display
+        if (CONFIG.elements.accessCodeDisplay) {
+            CONFIG.elements.accessCodeDisplay.textContent = 'Enter Code';
+            CONFIG.elements.accessCodeDisplay.style.color = '#999';
+        }
+        
+        // Reset hidden input
+        if (CONFIG.elements.accessCodeInput) {
+            CONFIG.elements.accessCodeInput.value = '';
+        }
+        
+        // Focus the hidden input for next user
+        setTimeout(() => {
+            if (CONFIG.elements.accessCodeInput) {
+                CONFIG.elements.accessCodeInput.focus();
+            }
+        }, 100);
     },
     
     showCallScreen() {
