@@ -1,4 +1,4 @@
-// js/websocket-client.js - COMPLETE WITH PING & SMART RECONNECT
+// js/websocket-client.js - COMPLETE WITH NETWORK QUALITY MEASUREMENT
 const WebSocketClient = {
     // Add these new properties
     pingInterval: null,
@@ -6,6 +6,11 @@ const WebSocketClient = {
     maxReconnectAttempts: 20,
     reconnectDelay: 1000,
     isIntentionalClose: false,
+    
+    // Network quality measurement properties
+    pingTimes: [],
+    lastPingTime: null,
+    networkQuality: 'good',
     
     connect() {
         return new Promise((resolve, reject) => {
@@ -18,19 +23,14 @@ const WebSocketClient = {
                 this.ws.onopen = () => {
                     console.log('✅ WebSocket connected');
                     UIManager.showStatus('Connected to server');
-                    this.startPingInterval(); // ADDED
-                    this.reconnectAttempts = 0; // ADDED
-                    this.isIntentionalClose = false; // ADDED
+                    this.startPingInterval();
+                    this.reconnectAttempts = 0;
+                    this.isIntentionalClose = false;
                     resolve();
                 };
                 
                 this.ws.onmessage = (event) => {
                     this.handleMessage(event.data);
-                    
-                    // ADDED: Update network quality based on message timing
-                    if (event.data.includes('pong')) {
-                        this.updateNetworkQuality('good');
-                    }
                 };
                 
                 this.ws.onerror = (error) => {
@@ -41,15 +41,10 @@ const WebSocketClient = {
                 
                 this.ws.onclose = (event) => {
                     console.log('WebSocket disconnected, code:', event.code);
-                    if (this.pingInterval) clearInterval(this.pingInterval); // ADDED
+                    if (this.pingInterval) clearInterval(this.pingInterval);
                     
-                    // Only show disconnected message if not intentional
                     if (!this.isIntentionalClose && !CONFIG.isInCall) {
                         UIManager.showStatus('Disconnected from server');
-                    }
-                    
-                    // ADDED: Smart reconnect if not intentional
-                    if (!this.isIntentionalClose) {
                         this.scheduleReconnect();
                     }
                 };
@@ -68,18 +63,17 @@ const WebSocketClient = {
         });
     },
     
-    // ADDED: Start ping interval to keep connection alive
     startPingInterval() {
         if (this.pingInterval) clearInterval(this.pingInterval);
         this.pingInterval = setInterval(() => {
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.lastPingTime = Date.now();
                 this.ws.send(JSON.stringify({ type: 'ping' }));
                 console.log('🏓 Ping sent');
             }
         }, 25000); // 25 seconds - optimal for NAT timeouts
     },
     
-    // ADDED: Smart reconnect with exponential backoff
     scheduleReconnect() {
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
             console.error('Max reconnection attempts reached');
@@ -99,14 +93,40 @@ const WebSocketClient = {
         }, delay);
     },
     
-    // ADDED: Update network quality indicator
-    updateNetworkQuality(quality) {
-        if (UIManager.showNetworkQuality) {
-            UIManager.showNetworkQuality(quality);
+    // ===== NEW: Update network quality based on latency =====
+    updateNetworkQualityFromLatency(latency) {
+        // Keep last 5 ping times
+        this.pingTimes.push(latency);
+        if (this.pingTimes.length > 5) {
+            this.pingTimes.shift();
+        }
+        
+        // Calculate average latency
+        const avgLatency = this.pingTimes.reduce((a, b) => a + b, 0) / this.pingTimes.length;
+        
+        // Determine quality
+        let quality;
+        if (avgLatency < 100) {
+            quality = 'excellent';
+        } else if (avgLatency < 200) {
+            quality = 'good';
+        } else if (avgLatency < 400) {
+            quality = 'fair';
+        } else {
+            quality = 'poor';
+        }
+        
+        // Only update if changed
+        if (quality !== this.networkQuality) {
+            this.networkQuality = quality;
+            console.log(`📊 Network quality: ${quality} (${Math.round(avgLatency)}ms)`);
+            
+            if (UIManager.showNetworkQuality) {
+                UIManager.showNetworkQuality(quality);
+            }
         }
     },
     
-    // ADDED: Graceful disconnect (call before logout)
     disconnect() {
         this.isIntentionalClose = true;
         if (this.pingInterval) {
@@ -135,9 +155,6 @@ const WebSocketClient = {
             const message = JSON.parse(data);
             console.log('📨 Received:', message.type, message);
             
-            // Update network quality on any message
-            this.updateNetworkQuality('good');
-            
             switch (message.type) {
                 case 'connected':
                     this.handleConnected(message);
@@ -155,12 +172,6 @@ const WebSocketClient = {
                 case 'user-list':
                     UIManager.updateUsersList(message.users);
                     break;
-					
-				case 'ping':
-					console.log('🏓 Ping received from server');
-					// Send pong back to keep connection alive
-					this.sendToServer({ type: 'pong' });
-					break;
                     
                 case 'user-connected':
                     console.log(`👤 User connected: ${message.user?.username}`);
@@ -234,8 +245,17 @@ const WebSocketClient = {
                     }
                     break;
                     
+                case 'ping':
+                    console.log('🏓 Ping received from server');
+                    this.sendToServer({ type: 'pong' });
+                    break;
+                    
                 case 'pong':
                     console.log('🏓 Pong received');
+                    if (this.lastPingTime) {
+                        const latency = Date.now() - this.lastPingTime;
+                        this.updateNetworkQualityFromLatency(latency);
+                    }
                     break;
                     
                 case 'error':
