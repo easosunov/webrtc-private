@@ -730,53 +730,57 @@
                 });
             }
         });
-        
-        // Keypad functionality
-        let accessCode = '';
-        
-        function addToCode(char) {
-            accessCode += char;
-            updateDisplay();
-            document.getElementById('hiddenAccessCode').value = accessCode;
+
+
+// ===== SIMPLE KEYPAD WITH SINGLE SOURCE OF TRUTH =====
+let accessCode = '';  // Single source of truth
+
+function addToCode(char) {
+    accessCode += char;
+    updateDisplay();
+    document.getElementById('hiddenAccessCode').value = accessCode;
+    console.log('Code:', accessCode);
+}
+
+function clearCode() {
+    accessCode = '';
+    updateDisplay();
+    document.getElementById('hiddenAccessCode').value = '';
+    document.getElementById('hiddenAccessCode').focus();
+    console.log('Code cleared');
+}
+
+function backspaceCode() {
+    accessCode = accessCode.slice(0, -1);
+    updateDisplay();
+    document.getElementById('hiddenAccessCode').value = accessCode;
+    console.log('Code:', accessCode || 'empty');
+}
+
+function updateDisplay() {
+    const display = document.getElementById('accessCodeDisplay');
+    if (display) {
+        if (accessCode === '') {
+            display.textContent = 'Enter Code';
+            display.style.color = '#999';
+        } else {
+            display.textContent = accessCode;
+            display.style.color = '#333';
         }
-        
-        function clearCode() {
-            accessCode = '';
-            updateDisplay();
-            document.getElementById('hiddenAccessCode').value = '';
-            document.getElementById('hiddenAccessCode').focus();
-        }
-        
-        function backspaceCode() {
-            accessCode = accessCode.slice(0, -1);
-            updateDisplay();
-            document.getElementById('hiddenAccessCode').value = accessCode;
-        }
-        
-        function updateDisplay() {
-            const display = document.getElementById('accessCodeDisplay');
-            if (accessCode === '') {
-                display.textContent = 'Enter Code';
-                display.style.color = '#999';
-            } else {
-                display.textContent = accessCode;
-                display.style.color = '#333';
-            }
-        }
-        
-        function submitCode() {
-            if (accessCode.trim() === '') {
-                UIManager.showError('Please enter an access code');
-                return;
-            }
-            
-            if (CONFIG.elements && CONFIG.elements.accessCodeInput) {
-                CONFIG.elements.accessCodeInput.value = accessCode;
-            }
-            
-            AuthManager.login();
-        }
-        
+    }
+}
+
+function submitCode() {
+    if (accessCode.trim() === '') {
+        UIManager.showError('Please enter an access code');
+        return;
+    }
+    
+    console.log('Submitting code:', accessCode);
+    AuthManager.login(accessCode);
+}
+
+    
         // Highlight keypad button when key is pressed
         function highlightKeypadButton(key) {
             // Map keyboard keys to button selectors
