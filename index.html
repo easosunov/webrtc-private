@@ -583,6 +583,21 @@
         <div id="status">Ready to login...</div>
     </div>
     
+	<!-- DEBUG CONSOLE - Collapsible and scrollable -->
+<div id="debugConsole" style="margin-top: 20px; border: 1px solid #ccc; border-radius: 5px; background: #f8f9fa; font-family: monospace; font-size: 12px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #e9ecef; border-bottom: 1px solid #ccc; border-radius: 5px 5px 0 0;">
+        <span style="font-weight: bold; color: #495057;">📋 System Log</span>
+        <div>
+            <button id="clearDebugBtn" style="margin-right: 5px; padding: 2px 8px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer;">Clear</button>
+            <button id="toggleDebugBtn" style="padding: 2px 8px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer;">▼ Hide</button>
+        </div>
+    </div>
+    <div id="debugContent" style="height: 150px; overflow-y: scroll; padding: 8px; background: #f8f9fa;">
+        <div style="color: #6c757d;">=== System Log Initialized ===</div>
+    </div>
+</div>
+	
+	
     <div id="call">
         <!-- Regular User View -->
         <div id="userView">
@@ -657,6 +672,9 @@
         console.log('Platform:', navigator.platform);
         console.log('connectionStatus element at load:', document.getElementById('connectionStatus'));
         
+		<!-- Debug Console -->
+		<script src="./js/debug-console.js"></script>
+		
         // Android cache control - ADD THIS FUNCTION
         function clearAndroidCache() {
             // Clear service workers
