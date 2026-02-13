@@ -1,8 +1,11 @@
-// js/websocket-client.js - COMPLETE WITH RECONNECTION LOGIC
+// js/websocket-client.js - COMPLETE WITH PING & SMART RECONNECT
 const WebSocketClient = {
+    // Add these new properties
+    pingInterval: null,
     reconnectAttempts: 0,
-    maxReconnectAttempts: 10,
-    reconnectTimer: null,
+    maxReconnectAttempts: 20,
+    reconnectDelay: 1000,
+    isIntentionalClose: false,
     
     connect() {
         return new Promise((resolve, reject) => {
@@ -15,12 +18,19 @@ const WebSocketClient = {
                 this.ws.onopen = () => {
                     console.log('✅ WebSocket connected');
                     UIManager.showStatus('Connected to server');
-                    this.reconnectAttempts = 0; // Reset on successful connection
+                    this.startPingInterval(); // ADDED
+                    this.reconnectAttempts = 0; // ADDED
+                    this.isIntentionalClose = false; // ADDED
                     resolve();
                 };
                 
                 this.ws.onmessage = (event) => {
                     this.handleMessage(event.data);
+                    
+                    // ADDED: Update network quality based on message timing
+                    if (event.data.includes('pong')) {
+                        this.updateNetworkQuality('good');
+                    }
                 };
                 
                 this.ws.onerror = (error) => {
@@ -29,10 +39,17 @@ const WebSocketClient = {
                     reject(error);
                 };
                 
-                this.ws.onclose = () => {
-                    console.log('WebSocket disconnected');
-                    if (!CONFIG.isInCall && !CONFIG.isIntentionalLogout) {
+                this.ws.onclose = (event) => {
+                    console.log('WebSocket disconnected, code:', event.code);
+                    if (this.pingInterval) clearInterval(this.pingInterval); // ADDED
+                    
+                    // Only show disconnected message if not intentional
+                    if (!this.isIntentionalClose && !CONFIG.isInCall) {
                         UIManager.showStatus('Disconnected from server');
+                    }
+                    
+                    // ADDED: Smart reconnect if not intentional
+                    if (!this.isIntentionalClose) {
                         this.scheduleReconnect();
                     }
                 };
@@ -51,26 +68,53 @@ const WebSocketClient = {
         });
     },
     
+    // ADDED: Start ping interval to keep connection alive
+    startPingInterval() {
+        if (this.pingInterval) clearInterval(this.pingInterval);
+        this.pingInterval = setInterval(() => {
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({ type: 'ping' }));
+                console.log('🏓 Ping sent');
+            }
+        }, 25000); // 25 seconds - optimal for NAT timeouts
+    },
+    
+    // ADDED: Smart reconnect with exponential backoff
     scheduleReconnect() {
-        if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            console.error('Max reconnection attempts reached');
+            UIManager.showError('Connection lost. Please refresh the page.');
+            return;
+        }
         
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
-            const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 30000);
-            console.log(`⏰ Reconnecting in ${delay/1000}s (attempt ${this.reconnectAttempts + 1})`);
-            UIManager.showStatus(`Reconnecting in ${delay/1000}s...`);
-            
-            this.reconnectTimer = setTimeout(() => {
-                this.reconnectAttempts++;
-                console.log(`Reconnection attempt ${this.reconnectAttempts}`);
-                this.connect().catch((err) => {
-                    console.error(`Reconnection attempt ${this.reconnectAttempts} failed:`, err);
-                    this.scheduleReconnect();
-                });
-            }, delay);
-        } else {
-            console.error('❌ Max reconnection attempts reached');
-            UIManager.showError('Cannot connect to server. Please refresh the page.');
-            UIManager.showStatus('Connection failed');
+        const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 30000);
+        console.log(`⏰ Reconnecting in ${delay/1000}s (attempt ${this.reconnectAttempts + 1})`);
+        UIManager.showStatus(`Reconnecting in ${delay/1000}s...`);
+        
+        setTimeout(() => {
+            this.reconnectAttempts++;
+            this.connect().catch(() => {
+                // Error handled in connect promise
+            });
+        }, delay);
+    },
+    
+    // ADDED: Update network quality indicator
+    updateNetworkQuality(quality) {
+        if (UIManager.showNetworkQuality) {
+            UIManager.showNetworkQuality(quality);
+        }
+    },
+    
+    // ADDED: Graceful disconnect (call before logout)
+    disconnect() {
+        this.isIntentionalClose = true;
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
+            this.pingInterval = null;
+        }
+        if (this.ws) {
+            this.ws.close(1000, 'Intentional disconnect');
         }
     },
     
@@ -90,6 +134,9 @@ const WebSocketClient = {
         try {
             const message = JSON.parse(data);
             console.log('📨 Received:', message.type, message);
+            
+            // Update network quality on any message
+            this.updateNetworkQuality('good');
             
             switch (message.type) {
                 case 'connected':
@@ -181,6 +228,10 @@ const WebSocketClient = {
                     }
                     break;
                     
+                case 'pong':
+                    console.log('🏓 Pong received');
+                    break;
+                    
                 case 'error':
                     UIManager.showError(message.message);
                     break;
@@ -202,7 +253,6 @@ const WebSocketClient = {
     handleAdminOnline(message) {
         console.log(`📢 Admin is online: ${message.adminUsername}`);
         CONFIG.adminSocketId = message.adminSocketId;
-        CONFIG.adminOnline = true;
         
         UIManager.showStatus(`Admin is online`);
         
@@ -214,23 +264,12 @@ const WebSocketClient = {
     handleAdminOffline(message) {
         console.log('📢 Admin is offline');
         CONFIG.adminSocketId = null;
-        CONFIG.adminOnline = false;
         
         UIManager.showStatus('Admin is offline');
         
         if (!CONFIG.isAdmin) {
             UIManager.updateCallButtons();
         }
-    },
-    
-    // Call this before intentional logout
-    setIntentionalLogout() {
-        CONFIG.isIntentionalLogout = true;
-    },
-    
-    // Reset intentional logout flag
-    resetIntentionalLogout() {
-        CONFIG.isIntentionalLogout = false;
     }
 };
 
