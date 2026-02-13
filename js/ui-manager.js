@@ -1,4 +1,4 @@
-// js/ui-manager.js - COMPLETE FIXED VERSION WITH LOGIN SCREEN RESET AND NETWORK INDICATOR
+// js/ui-manager.js - COMPLETE FIXED VERSION WITH NETWORK METRICS DISPLAY
 const UIManager = {
     init() {
         console.log('Initializing UI Manager...');
@@ -23,7 +23,7 @@ const UIManager = {
             // User list element
             userList: document.getElementById('userList'),
             
-            // NEW: Admin dropdown elements
+            // Admin dropdown elements
             userDropdown: document.getElementById('userDropdown'),
             selectedUserDisplay: document.getElementById('selectedUserDisplay'),
             selectedUserName: document.getElementById('selectedUserName'),
@@ -33,8 +33,11 @@ const UIManager = {
             // Access code input (if exists)
             accessCodeInput: document.getElementById('hiddenAccessCode'),
             
-            // ADDED: Access code display element
+            // Access code display element
             accessCodeDisplay: document.getElementById('accessCodeDisplay'),
+            
+            // Network indicator element
+            networkIndicator: document.getElementById('networkIndicator'),
             
             // Call control buttons
             callAdminBtn: document.querySelector('.btn-call'),
@@ -91,7 +94,7 @@ const UIManager = {
         
         console.log('Updating admin user dropdown with', users?.length || 0, 'users');
         
-        // Call the new dropdown update function (defined in index.html)
+        // Call the dropdown update function (defined in index.html)
         if (typeof window.updateAdminDropdown === 'function') {
             window.updateAdminDropdown(users);
         }
@@ -130,7 +133,6 @@ const UIManager = {
         }
     },
     
-    // ===== MODIFIED: Added login screen reset functionality =====
     showLoginScreen() {
         if (CONFIG.elements.loginDiv) {
             CONFIG.elements.loginDiv.style.display = 'block';
@@ -145,7 +147,6 @@ const UIManager = {
         this.showStatus('Please login');
     },
     
-    // ===== NEW: Reset login screen to clean state =====
     resetLoginScreen() {
         console.log('Resetting login screen');
         
@@ -213,16 +214,25 @@ const UIManager = {
         if (CONFIG.elements.localVideo && CONFIG.localStream) {
             CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
             CONFIG.elements.localVideo.muted = true;
-            CONFIG.elements.localVideo.play().catch(e => console.log('Local video play error:', e));
+            
+            // Handle play() promise properly
+            const playPromise = CONFIG.elements.localVideo.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(e => console.log('Local video play error:', e));
+            }
         }
         
         if (CONFIG.elements.remoteVideo && CONFIG.remoteStream) {
             CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
-            CONFIG.elements.remoteVideo.play().catch(e => console.log('Remote video play error:', e));
+            
+            // Handle play() promise properly
+            const playPromise = CONFIG.elements.remoteVideo.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(e => console.log('Remote video play error:', e));
+            }
         }
     },
     
-    // NEW: Update admin status display
     updateAdminStatus(isOnline) {
         if (CONFIG.isAdmin) return; // Don't show for admin
         
@@ -239,51 +249,47 @@ const UIManager = {
             this.showStatus('Admin is offline - Cannot make calls');
         }
     },
-
-    // ADDED: Network quality indicator - NO COMMA AFTER PREVIOUS FUNCTION
-    showNetworkQuality(quality) {
-        const indicator = document.getElementById('networkIndicator');
+    
+    // ===== NEW: Display real network metrics =====
+    showNetworkMetrics(metrics) {
+        const indicator = CONFIG.elements.networkIndicator;
         if (!indicator) return;
         
+        // Create a detailed tooltip
+        const tooltip = `Latency: ${metrics.latency}ms
+Jitter: ${metrics.jitter}ms
+Packet Loss: ${metrics.packetLoss}%
+Bandwidth: ${metrics.bandwidth} Mbps
+Reliability: ${metrics.reliability}%`;
+        
+        // Choose color based on reliability
+        let color;
+        if (metrics.reliability > 80) color = '#44aa44';
+        else if (metrics.reliability > 60) color = '#88cc44';
+        else if (metrics.reliability > 40) color = '#ffaa44';
+        else if (metrics.reliability > 20) color = '#ff7744';
+        else color = '#ff4444';
+        
+        // Choose symbol based on connection type
         let symbol = '📶';
-        let color = '#44aa44';
-        let title = 'Good connection';
+        if (metrics.bandwidth >= 50) symbol = '🚀'; // Fiber
+        else if (metrics.bandwidth >= 25) symbol = '📡'; // Fast broadband
+        else if (metrics.bandwidth >= 10) symbol = '📶'; // Standard broadband
+        else if (metrics.bandwidth >= 5) symbol = '📱'; // Mobile 4G
+        else symbol = '🐢'; // Slow connection
         
-        switch(quality) {
-            case 'excellent':
-                symbol = '📶';
-                color = '#44aa44';
-                title = 'Excellent connection';
-                break;
-            case 'good':
-                symbol = '📶';
-                color = '#88cc44';
-                title = 'Good connection';
-                break;
-            case 'fair':
-                symbol = '📶';
-                color = '#ffaa44';
-                title = 'Fair connection';
-                break;
-            case 'poor':
-                symbol = '📶';
-                color = '#ff7744';
-                title = 'Poor connection';
-                break;
-            case 'disconnected':
-                symbol = '❌';
-                color = '#ff4444';
-                title = 'Disconnected';
-                break;
-            default:
-                symbol = '📶';
-                color = '#999';
-                title = 'Unknown';
-        }
-        
-        indicator.textContent = symbol;
+        // Display
+        indicator.innerHTML = `${symbol} ${metrics.latency}ms`;
         indicator.style.color = color;
-        indicator.title = title;
+        indicator.title = tooltip;
+        
+        // Also log to console occasionally for debugging
+        if (metrics.latency > 400) {
+            console.warn('⚠️ High latency detected:', metrics.latency, 'ms');
+        }
+        if (metrics.packetLoss > 10) {
+            console.warn('⚠️ Packet loss detected:', metrics.packetLoss, '%');
+        }
     }
 };
 
