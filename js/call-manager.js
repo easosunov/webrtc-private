@@ -1,4 +1,4 @@
-// js/call-manager.js - MINIMAL FIX VERSION
+// js/call-manager.js - COMPLETE FIXED VERSION
 const CallManager = {
     // Add audio element for notification sound
     notificationAudio: null,
@@ -54,6 +54,15 @@ const CallManager = {
         });
         
         console.log('Waiting for user to accept call...');
+    },
+    
+    // Alias for callUser to maintain compatibility
+    callAdmin() {
+        if (!CONFIG.adminSocketId) {
+            UIManager.showError('Admin is not available');
+            return;
+        }
+        this.callUser('Administrator', CONFIG.adminSocketId);
     },
     
     handleCallInitiated(data) {
@@ -384,53 +393,53 @@ const CallManager = {
         UIManager.showStatus('Call rejected by ' + (data.rejecterName || 'user'));
     },
     
-	handleCallEnded(data) {
-    console.log('=== CallManager.handleCallEnded() - stopping monitoring ===');
-    
-    // Clean up status monitoring
-    if (typeof stopMonitoring !== 'undefined') {
-        stopMonitoring();
-    }
-    if (typeof hideConnectionStatus !== 'undefined') {
-        hideConnectionStatus();
-    }
-    
-    console.log('Call ended by remote:', data.endedByName || 'remote user');
-    
-    // ===== FORCE ADMIN UI UPDATE =====
-    CONFIG.isInCall = false;
-    
-    if (CONFIG.isAdmin) {
-        const adminHangupBtn = document.getElementById('adminHangupBtn');
-        if (adminHangupBtn) {
-            adminHangupBtn.disabled = true;
-            adminHangupBtn.className = 'btn-hangup';
-            console.log('Admin hangup button disabled');
+    handleCallEnded(data) {
+        console.log('=== CallManager.handleCallEnded() - stopping monitoring ===');
+        
+        // Clean up status monitoring
+        if (typeof stopMonitoring !== 'undefined') {
+            stopMonitoring();
+        }
+        if (typeof hideConnectionStatus !== 'undefined') {
+            hideConnectionStatus();
         }
         
-        const adminCallBtn = document.getElementById('adminCallBtn');
-        if (adminCallBtn) {
-            adminCallBtn.disabled = false;
-            adminCallBtn.className = 'btn-call active';
-        }
-    } else {
-        const userHangupBtn = document.querySelector('.btn-hangup');
-        if (userHangupBtn) {
-            userHangupBtn.disabled = true;
-            userHangupBtn.className = 'btn-hangup';
+        console.log('Call ended by remote:', data.endedByName || 'remote user');
+        
+        // ===== FORCE ADMIN UI UPDATE =====
+        CONFIG.isInCall = false;
+        
+        if (CONFIG.isAdmin) {
+            const adminHangupBtn = document.getElementById('adminHangupBtn');
+            if (adminHangupBtn) {
+                adminHangupBtn.disabled = true;
+                adminHangupBtn.className = 'btn-hangup';
+                console.log('Admin hangup button disabled');
+            }
+            
+            const adminCallBtn = document.getElementById('adminCallBtn');
+            if (adminCallBtn) {
+                adminCallBtn.disabled = false;
+                adminCallBtn.className = 'btn-call active';
+            }
+        } else {
+            const userHangupBtn = document.querySelector('.btn-hangup');
+            if (userHangupBtn) {
+                userHangupBtn.disabled = true;
+                userHangupBtn.className = 'btn-hangup';
+            }
+            
+            const userCallBtn = document.querySelector('.btn-call');
+            if (userCallBtn) {
+                userCallBtn.disabled = false;
+                userCallBtn.className = 'btn-call active';
+            }
         }
         
-        const userCallBtn = document.querySelector('.btn-call');
-        if (userCallBtn) {
-            userCallBtn.disabled = false;
-            userCallBtn.className = 'btn-call active';
-        }
-    }
+        this.cleanupCall();
+        UIManager.showStatus('Call ended by ' + (data.endedByName || 'remote user'));
+    },
     
-    this.cleanupCall();
-    UIManager.showStatus('Call ended by ' + (data.endedByName || 'remote user'));
-}
-	
     hangup() {
         console.log('=== CallManager.hangup() - stopping monitoring ===');
         
@@ -455,67 +464,66 @@ const CallManager = {
         this.cleanupCall();
     },
     
-cleanupCall() {
-    console.log('Cleaning up call...');
-    
-    // Stop any notification sound
-    this.stopNotificationSound();
-    
-    CONFIG.isProcessingAnswer = false;
-    CONFIG.isInCall = false;  // ← This is critical
-    
-    if (CONFIG.peerConnection) {
-        CONFIG.peerConnection.close();
-        CONFIG.peerConnection = null;
-    }
-    
-    if (CONFIG.elements.remoteVideo && CONFIG.elements.remoteVideo.srcObject) {
-        CONFIG.elements.remoteVideo.srcObject.getTracks().forEach(track => track.stop());
-        CONFIG.elements.remoteVideo.srcObject = null;
-    }
-    
-    CONFIG.targetSocketId = null;
-    CONFIG.targetUsername = null;
-    CONFIG.isInitiator = false;
-    CONFIG.incomingCallFrom = null;
-    CONFIG.iceCandidatesQueue = [];
-    
-    // Remove notification if exists
-    const notification = document.getElementById('incoming-call-notification');
-    if (notification) notification.remove();
-    
-    // ===== FORCE UI UPDATE FOR ADMIN HANGUP BUTTON =====
-    if (CONFIG.isAdmin) {
-        const adminHangupBtn = document.getElementById('adminHangupBtn');
-        if (adminHangupBtn) {
-            adminHangupBtn.disabled = true;
-            adminHangupBtn.className = 'btn-hangup';
-            console.log('Admin hangup button disabled');
+    cleanupCall() {
+        console.log('Cleaning up call...');
+        
+        // Stop any notification sound
+        this.stopNotificationSound();
+        
+        CONFIG.isProcessingAnswer = false;
+        CONFIG.isInCall = false;  // ← Explicitly set this
+        
+        if (CONFIG.peerConnection) {
+            CONFIG.peerConnection.close();
+            CONFIG.peerConnection = null;
         }
         
-        const adminCallBtn = document.getElementById('adminCallBtn');
-        if (adminCallBtn) {
-            adminCallBtn.disabled = false;
-            adminCallBtn.className = 'btn-call active';
-        }
-    } else {
-        const userHangupBtn = document.querySelector('.btn-hangup');
-        if (userHangupBtn) {
-            userHangupBtn.disabled = true;
-            userHangupBtn.className = 'btn-hangup';
+        if (CONFIG.elements.remoteVideo && CONFIG.elements.remoteVideo.srcObject) {
+            CONFIG.elements.remoteVideo.srcObject.getTracks().forEach(track => track.stop());
+            CONFIG.elements.remoteVideo.srcObject = null;
         }
         
-        const userCallBtn = document.querySelector('.btn-call');
-        if (userCallBtn) {
-            userCallBtn.disabled = false;
-            userCallBtn.className = 'btn-call active';
+        CONFIG.targetSocketId = null;
+        CONFIG.targetUsername = null;
+        CONFIG.isInitiator = false;
+        CONFIG.incomingCallFrom = null;
+        CONFIG.iceCandidatesQueue = [];
+        
+        // Remove notification if exists
+        const notification = document.getElementById('incoming-call-notification');
+        if (notification) notification.remove();
+        
+        // ===== FORCE UI UPDATE FOR HANGUP BUTTON =====
+        if (CONFIG.isAdmin) {
+            const adminHangupBtn = document.getElementById('adminHangupBtn');
+            if (adminHangupBtn) {
+                adminHangupBtn.disabled = true;
+                adminHangupBtn.className = 'btn-hangup';
+            }
+            
+            const adminCallBtn = document.getElementById('adminCallBtn');
+            if (adminCallBtn) {
+                adminCallBtn.disabled = false;
+                adminCallBtn.className = 'btn-call active';
+            }
+        } else {
+            const userHangupBtn = document.querySelector('.btn-hangup');
+            if (userHangupBtn) {
+                userHangupBtn.disabled = true;
+                userHangupBtn.className = 'btn-hangup';
+            }
+            
+            const userCallBtn = document.querySelector('.btn-call');
+            if (userCallBtn) {
+                userCallBtn.disabled = false;
+                userCallBtn.className = 'btn-call active';
+            }
         }
+        
+        UIManager.showStatus('Ready');
+        UIManager.updateCallButtons();
     }
-    
-    UIManager.showStatus('Ready');
-    // UIManager.updateCallButtons(); // This may be redundant now
-}
-
 };
 
+// Make sure CallManager is available globally
 window.CallManager = CallManager;
