@@ -222,6 +222,14 @@ const UIManager = {
         this.updateCallButtons();
         
         this.showStatus(`Logged in as ${CONFIG.myUsername || 'User'} ${CONFIG.isAdmin ? '(Admin)' : ''}`);
+		    // Ensure both indicators are visible
+    const networkIndicators = document.querySelectorAll('#networkIndicator, #webrtcIndicator');
+    networkIndicators.forEach(el => {
+        if (el) {
+            el.style.display = 'inline-block';
+            el.style.visibility = 'visible';
+        }
+    });
     },
     
     updateVideoElements() {
