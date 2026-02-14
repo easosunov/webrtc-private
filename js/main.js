@@ -393,6 +393,22 @@ function setupGlobalFunctions() {
     console.log('Environment:', CONFIG.environment);
 })();
 
+// ========== VIDEO STABILITY MONITOR ==========
+// Monitor video element and recover if it stops
+setInterval(() => {
+    const localVideo = document.getElementById('localVideo');
+    if (localVideo && CONFIG.localStream && CONFIG.isInCall) {
+        // Check if video is actually playing
+        if (localVideo.readyState === 0 || localVideo.paused) {
+            console.log('Video not playing, attempting recovery...');
+            if (window.WebRTCManager && WebRTCManager.recoverVideo) {
+                WebRTCManager.recoverVideo();
+            }
+        }
+    }
+}, 3000);
+
+
 // Export for testing (if needed)
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
