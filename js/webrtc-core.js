@@ -440,19 +440,45 @@ updateCameraButtonVisibility() {
     }
 },
 
+
+// Switch camera during active call - FIXED VERSION
 updateCameraIndicator() {
     const indicator = document.getElementById('cameraIndicator');
-    if (indicator) {
+    if (!indicator) {
+        // Create indicator if it doesn't exist
+        const newIndicator = document.createElement('div');
+        newIndicator.id = 'cameraIndicator';
+        newIndicator.style.cssText = `
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 16px;
+            z-index: 10001;
+            pointer-events: none;
+            font-weight: bold;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        `;
+        document.body.appendChild(newIndicator);
+    }
+    
+    const camIndicator = document.getElementById('cameraIndicator');
+    if (camIndicator) {
         if (CONFIG.localStream && CONFIG.localStream.getVideoTracks().length > 0) {
-            indicator.style.display = 'block';
-            indicator.innerHTML = this.currentFacingMode === 'user' ? '🤳 Front' : '📷 Rear';
+            camIndicator.style.display = 'block';
+            camIndicator.innerHTML = this.currentFacingMode === 'user' ? '🤳 FRONT CAMERA' : '📷 REAR CAMERA';
+            console.log('Camera indicator updated:', camIndicator.innerHTML);
         } else {
-            indicator.style.display = 'none';
+            camIndicator.style.display = 'none';
         }
     }
 },
 
-// Switch camera during active call - FIXED VERSION
+
+// Switch camera during active call - COMPLETELY REWRITTEN
 async switchCamera() {
     if (!CONFIG.localStream) {
         console.warn('No local stream to switch camera');
@@ -463,20 +489,28 @@ async switchCamera() {
     console.log('🔄 Attempting to switch camera');
     DebugConsole?.info('Camera', 'Switching camera...');
     
+    // Show feedback immediately
+    UIManager.showStatus('Switching camera...');
+    
     // Toggle facing mode
     const newFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
     
     try {
-        // Get current video track settings to preserve resolution
+        // Get current video track settings
         const currentVideoTrack = CONFIG.localStream.getVideoTracks()[0];
         const currentSettings = currentVideoTrack?.getSettings() || {};
         
-        // Save current audio tracks
+        // Get current audio tracks
         const audioTracks = CONFIG.localStream.getAudioTracks();
         
-        // Create new video track with opposite facing mode
+        // Create a temporary video element to show "switching" state
+        if (CONFIG.elements.localVideo) {
+            CONFIG.elements.localVideo.poster = ''; // Clear any poster
+        }
+        
+        // Request new camera with proper constraints
         const constraints = {
-            audio: false, // Don't request audio again
+            audio: false,
             video: {
                 facingMode: newFacingMode,
                 width: currentSettings.width || { ideal: 640 },
@@ -484,36 +518,49 @@ async switchCamera() {
             }
         };
         
-        console.log('📷 Requesting camera with constraints:', constraints);
+        console.log('📷 Requesting camera:', constraints);
         
         // Get new video track
         const newStream = await navigator.mediaDevices.getUserMedia(constraints);
         const newVideoTrack = newStream.getVideoTracks()[0];
         
-        // Create a new stream with old audio + new video
-        const newLocalStream = new MediaStream();
+        // Create brand new stream
+        const freshStream = new MediaStream();
         
         // Add existing audio tracks
         audioTracks.forEach(track => {
-            newLocalStream.addTrack(track);
+            // Clone audio tracks to avoid issues
+            const audioTrack = track.clone();
+            freshStream.addTrack(audioTrack);
         });
         
         // Add new video track
-        newLocalStream.addTrack(newVideoTrack);
+        freshStream.addTrack(newVideoTrack);
         
-        // Stop old video tracks
-        CONFIG.localStream.getVideoTracks().forEach(track => {
-            track.stop();
-            CONFIG.localStream.removeTrack(track);
-        });
+        // Get the old video track before stopping
+        const oldVideoTrack = currentVideoTrack;
         
-        // Replace the old stream with new one
-        CONFIG.localStream = newLocalStream;
+        // Update CONFIG.localStream to the new stream
+        CONFIG.localStream = freshStream;
         
         // Update local video element
         if (CONFIG.elements.localVideo) {
             CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
-            CONFIG.elements.localVideo.play().catch(e => console.log('Local video play after switch:', e));
+            // Force play with a small delay to allow camera to initialize
+            setTimeout(() => {
+                CONFIG.elements.localVideo.play()
+                    .then(() => {
+                        console.log('✅ Local video playing after switch');
+                        
+                        // Update indicator after successful play
+                        this.currentFacingMode = newFacingMode;
+                        this.updateCameraIndicator();
+                        
+                        const cameraIcon = newFacingMode === 'user' ? '🤳' : '📷';
+                        UIManager.showStatus(`${cameraIcon} ${newFacingMode === 'user' ? 'Front' : 'Rear'} camera`);
+                    })
+                    .catch(e => console.log('Local video play after switch:', e));
+            }, 300);
         }
         
         // If in a call, replace the track in peer connection
@@ -530,15 +577,13 @@ async switchCamera() {
             }
         }
         
-        // Update current facing mode
-        this.currentFacingMode = newFacingMode;
-        
-        // Update camera indicator
-        this.updateCameraIndicator();
-        
-        // Show feedback
-        const cameraIcon = newFacingMode === 'user' ? '🤳' : '📷';
-        UIManager.showStatus(`${cameraIcon} ${newFacingMode === 'user' ? 'Front' : 'Rear'} camera`);
+        // Stop old video track after a delay to ensure smooth transition
+        setTimeout(() => {
+            if (oldVideoTrack && oldVideoTrack.readyState === 'live') {
+                oldVideoTrack.stop();
+                console.log('Stopped old video track');
+            }
+        }, 500);
         
         return true;
         
@@ -546,10 +591,13 @@ async switchCamera() {
         console.error('Failed to switch camera:', error);
         DebugConsole?.error('Camera', `Switch failed: ${error.message}`);
         UIManager.showError('Could not switch camera');
+        
+        // Revert to previous camera on error
+        this.currentFacingMode = this.currentFacingMode;
+        this.updateCameraIndicator();
         return false;
     }
 },
-
 
 // Call this during initialization
 async initCameras() {
