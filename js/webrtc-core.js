@@ -1,5 +1,10 @@
-// js/webrtc-core.js - COMPLETE WITH DISCONNECT HANDLING
+// js/webrtc-core.js - COMPLETE WITH DISCONNECT HANDLING AND CAMERA SWITCHING
 const WebRTCManager = {
+    // Camera properties
+    hasMultipleCameras: false,
+    currentFacingMode: 'user', // 'user' = front, 'environment' = rear
+    cameraInitialized: false,
+    
     createPeerConnection() {
         console.log('🔗 Creating peer connection...');
         DebugConsole?.info('WebRTC', 'Creating peer connection');
@@ -401,244 +406,255 @@ const WebRTCManager = {
         DebugConsole?.info('WebRTC', 'ICE candidate queue cleared');
     },
     
-	// Add these methods to webrtc-core.js
-
-// Check if device has multiple cameras
-hasMultipleCameras: false,
-
-// Current camera facing mode
-currentFacingMode: 'user', // 'user' = front, 'environment' = rear
-
-// Initialize camera detection
-async detectCameras() {
-    try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+    // ========== CAMERA DETECTION AND SWITCHING ==========
+    
+    // Initialize camera detection
+    async detectCameras() {
+        try {
+            // Wait for permissions if needed
+            if (!CONFIG.hasMediaPermissions) {
+                console.log('Waiting for media permissions before detecting cameras');
+                return [];
+            }
+            
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(device => device.kind === 'videoinput');
+            
+            this.hasMultipleCameras = videoDevices.length > 1;
+            
+            console.log(`📷 Detected ${videoDevices.length} camera(s)`);
+            DebugConsole?.info('Camera', `Detected ${videoDevices.length} camera(s)`);
+            
+            videoDevices.forEach((device, index) => {
+                console.log(`  Camera ${index + 1}: ${device.label || 'Unnamed'}`);
+            });
+            
+            this.updateCameraButtonVisibility();
+            return videoDevices;
+        } catch (error) {
+            console.error('Failed to detect cameras:', error);
+            return [];
+        }
+    },
+    
+    updateCameraButtonVisibility() {
+        const switchBtn = document.getElementById('switchCameraBtn');
+        if (switchBtn) {
+            switchBtn.style.display = this.hasMultipleCameras ? 'inline-block' : 'none';
+            console.log(`Camera button ${this.hasMultipleCameras ? 'shown' : 'hidden'}`);
+        }
+    },
+    
+    updateCameraIndicator() {
+        let indicator = document.getElementById('cameraIndicator');
         
-        this.hasMultipleCameras = videoDevices.length > 1;
-        
-        console.log(`📷 Detected ${videoDevices.length} camera(s)`);
-        DebugConsole?.info('Camera', `Detected ${videoDevices.length} camera(s)`);
-        
-        videoDevices.forEach((device, index) => {
-            console.log(`  Camera ${index + 1}: ${device.label || 'Unnamed'}`);
-        });
-        this.updateCameraButtonVisibility();
-        return videoDevices;
-    } catch (error) {
-        console.error('Failed to detect cameras:', error);
-        return [];
-    }
-},
-
-
-updateCameraButtonVisibility() {
-    const switchBtn = document.getElementById('switchCameraBtn');
-    if (switchBtn) {
-        switchBtn.style.display = this.hasMultipleCameras ? 'inline-block' : 'none';
-        console.log(`Camera button ${this.hasMultipleCameras ? 'shown' : 'hidden'}`);
-    }
-},
-
-
-// Switch camera during active call - FIXED VERSION
-updateCameraIndicator() {
-    const indicator = document.getElementById('cameraIndicator');
-    if (!indicator) {
         // Create indicator if it doesn't exist
-        const newIndicator = document.createElement('div');
-        newIndicator.id = 'cameraIndicator';
-        newIndicator.style.cssText = `
-            position: fixed;
-            bottom: 10px;
-            left: 10px;
-            background: rgba(0,0,0,0.7);
-            color: white;
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 16px;
-            z-index: 10001;
-            pointer-events: none;
-            font-weight: bold;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-        `;
-        document.body.appendChild(newIndicator);
-    }
-    
-    const camIndicator = document.getElementById('cameraIndicator');
-    if (camIndicator) {
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.id = 'cameraIndicator';
+            indicator.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                left: 20px;
+                background: rgba(0,0,0,0.7);
+                color: white;
+                padding: 8px 16px;
+                border-radius: 30px;
+                font-size: 16px;
+                font-weight: bold;
+                z-index: 10001;
+                pointer-events: none;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+                backdrop-filter: blur(5px);
+                border: 1px solid rgba(255,255,255,0.2);
+            `;
+            document.body.appendChild(indicator);
+            console.log('Created camera indicator');
+        }
+        
         if (CONFIG.localStream && CONFIG.localStream.getVideoTracks().length > 0) {
-            camIndicator.style.display = 'block';
-            camIndicator.innerHTML = this.currentFacingMode === 'user' ? '🤳 FRONT CAMERA' : '📷 REAR CAMERA';
-            console.log('Camera indicator updated:', camIndicator.innerHTML);
+            indicator.style.display = 'block';
+            indicator.innerHTML = this.currentFacingMode === 'user' ? '🤳 FRONT CAMERA' : '📷 REAR CAMERA';
+            console.log('Camera indicator updated:', indicator.innerHTML);
         } else {
-            camIndicator.style.display = 'none';
+            indicator.style.display = 'none';
         }
-    }
-},
-
-
-// Switch camera during active call - COMPLETELY REWRITTEN
-async switchCamera() {
-    if (!CONFIG.localStream) {
-        console.warn('No local stream to switch camera');
-        UIManager.showError('No camera active');
-        return false;
-    }
+    },
     
-    console.log('🔄 Attempting to switch camera');
-    DebugConsole?.info('Camera', 'Switching camera...');
-    
-    // Show feedback immediately
-    UIManager.showStatus('Switching camera...');
-    
-    // Toggle facing mode
-    const newFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
-    
-    try {
-        // Get current video track settings
-        const currentVideoTrack = CONFIG.localStream.getVideoTracks()[0];
-        const currentSettings = currentVideoTrack?.getSettings() || {};
-        
-        // Get current audio tracks
-        const audioTracks = CONFIG.localStream.getAudioTracks();
-        
-        // Create a temporary video element to show "switching" state
-        if (CONFIG.elements.localVideo) {
-            CONFIG.elements.localVideo.poster = ''; // Clear any poster
+    // Switch camera during active call - SIMPLIFIED AND RELIABLE
+    async switchCamera() {
+        if (!CONFIG.localStream) {
+            console.warn('No local stream to switch camera');
+            UIManager.showError('No camera active');
+            return false;
         }
         
-        // Request new camera with proper constraints
-        const constraints = {
-            audio: false,
-            video: {
-                facingMode: newFacingMode,
-                width: currentSettings.width || { ideal: 640 },
-                height: currentSettings.height || { ideal: 480 }
+        console.log('🔄 Attempting to switch camera from', this.currentFacingMode);
+        DebugConsole?.info('Camera', 'Switching camera...');
+        
+        // Show feedback
+        UIManager.showStatus('Switching camera...');
+        
+        // Toggle facing mode
+        const newFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
+        
+        try {
+            // Get current audio tracks (we'll keep these)
+            const audioTracks = CONFIG.localStream.getAudioTracks();
+            
+            // Get current video track settings for resolution
+            const currentVideoTrack = CONFIG.localStream.getVideoTracks()[0];
+            const currentSettings = currentVideoTrack?.getSettings() || {};
+            
+            // Create new video constraints
+            const constraints = {
+                audio: false,
+                video: {
+                    facingMode: newFacingMode,
+                    width: currentSettings.width || { ideal: 640 },
+                    height: currentSettings.height || { ideal: 480 }
+                }
+            };
+            
+            console.log('📷 Requesting camera with facing mode:', newFacingMode);
+            
+            // Get new video track
+            const tempStream = await navigator.mediaDevices.getUserMedia(constraints);
+            const newVideoTrack = tempStream.getVideoTracks()[0];
+            
+            // Create a completely new stream
+            const newStream = new MediaStream();
+            
+            // Add existing audio tracks
+            audioTracks.forEach(track => {
+                newStream.addTrack(track);
+            });
+            
+            // Add new video track
+            newStream.addTrack(newVideoTrack);
+            
+            // Store old video track for cleanup
+            const oldVideoTrack = currentVideoTrack;
+            
+            // Update CONFIG with new stream
+            CONFIG.localStream = newStream;
+            
+            // Update local video element
+            if (CONFIG.elements.localVideo) {
+                CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
+                
+                // Try to play immediately
+                try {
+                    await CONFIG.elements.localVideo.play();
+                    console.log('✅ Local video playing after switch');
+                } catch (playError) {
+                    console.log('Play error, retrying...', playError);
+                    // Retry after a short delay
+                    setTimeout(async () => {
+                        try {
+                            await CONFIG.elements.localVideo.play();
+                            console.log('✅ Local video playing after retry');
+                        } catch (e) {
+                            console.log('Final play failed:', e);
+                        }
+                    }, 200);
+                }
             }
-        };
-        
-        console.log('📷 Requesting camera:', constraints);
-        
-        // Get new video track
-        const newStream = await navigator.mediaDevices.getUserMedia(constraints);
-        const newVideoTrack = newStream.getVideoTracks()[0];
-        
-        // Create brand new stream
-        const freshStream = new MediaStream();
-        
-        // Add existing audio tracks
-        audioTracks.forEach(track => {
-            // Clone audio tracks to avoid issues
-            const audioTrack = track.clone();
-            freshStream.addTrack(audioTrack);
-        });
-        
-        // Add new video track
-        freshStream.addTrack(newVideoTrack);
-        
-        // Get the old video track before stopping
-        const oldVideoTrack = currentVideoTrack;
-        
-        // Update CONFIG.localStream to the new stream
-        CONFIG.localStream = freshStream;
-        
-        // Update local video element
-        if (CONFIG.elements.localVideo) {
-            CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
-            // Force play with a small delay to allow camera to initialize
+            
+            // If in a call, replace the track in peer connection
+            if (CONFIG.peerConnection && CONFIG.isInCall) {
+                const senders = CONFIG.peerConnection.getSenders();
+                const videoSender = senders.find(sender => 
+                    sender.track && sender.track.kind === 'video'
+                );
+                
+                if (videoSender) {
+                    await videoSender.replaceTrack(newVideoTrack);
+                    console.log('✅ Video track replaced in peer connection');
+                }
+            }
+            
+            // Update facing mode
+            this.currentFacingMode = newFacingMode;
+            
+            // Update indicator
+            this.updateCameraIndicator();
+            
+            // Stop old video track after a delay
             setTimeout(() => {
-                CONFIG.elements.localVideo.play()
-                    .then(() => {
-                        console.log('✅ Local video playing after switch');
-                        
-                        // Update indicator after successful play
-                        this.currentFacingMode = newFacingMode;
-                        this.updateCameraIndicator();
-                        
-                        const cameraIcon = newFacingMode === 'user' ? '🤳' : '📷';
-                        UIManager.showStatus(`${cameraIcon} ${newFacingMode === 'user' ? 'Front' : 'Rear'} camera`);
-                    })
-                    .catch(e => console.log('Local video play after switch:', e));
-            }, 300);
-        }
-        
-        // If in a call, replace the track in peer connection
-        if (CONFIG.peerConnection && CONFIG.isInCall) {
-            const senders = CONFIG.peerConnection.getSenders();
-            const videoSender = senders.find(sender => 
-                sender.track && sender.track.kind === 'video'
-            );
+                if (oldVideoTrack && oldVideoTrack.readyState === 'live') {
+                    oldVideoTrack.stop();
+                    console.log('Stopped old video track');
+                }
+            }, 500);
             
-            if (videoSender) {
-                await videoSender.replaceTrack(newVideoTrack);
-                console.log('✅ Video track replaced in peer connection');
-                DebugConsole?.success('Camera', 'Switched camera successfully');
+            // Clean up temp stream
+            setTimeout(() => {
+                tempStream.getTracks().forEach(track => {
+                    if (track.readyState === 'live') {
+                        track.stop();
+                    }
+                });
+            }, 1000);
+            
+            // Show success message
+            const cameraIcon = newFacingMode === 'user' ? '🤳' : '📷';
+            UIManager.showStatus(`${cameraIcon} ${newFacingMode === 'user' ? 'Front' : 'Rear'} camera`);
+            
+            return true;
+            
+        } catch (error) {
+            console.error('Failed to switch camera:', error);
+            DebugConsole?.error('Camera', `Switch failed: ${error.message}`);
+            UIManager.showError('Could not switch camera');
+            
+            // Revert to previous camera on error
+            this.currentFacingMode = this.currentFacingMode;
+            this.updateCameraIndicator();
+            return false;
+        }
+    },
+    
+    // Call this during initialization
+    async initCameras() {
+        await this.detectCameras();
+        
+        // Add click handler to local video for camera switching
+        const localVideo = document.getElementById('localVideo');
+        if (localVideo) {
+            // Remove any existing listeners to avoid duplicates
+            const newLocalVideo = localVideo.cloneNode(true);
+            localVideo.parentNode.replaceChild(newLocalVideo, localVideo);
+            
+            newLocalVideo.addEventListener('click', async (e) => {
+                // Prevent click during drag
+                if (window.isDragging) return;
+                
+                if (this.hasMultipleCameras && CONFIG.localStream) {
+                    await this.switchCamera();
+                } else if (!this.hasMultipleCameras) {
+                    DebugConsole?.info('Camera', 'No alternative camera available');
+                    UIManager.showStatus('Only one camera detected');
+                }
+            });
+            
+            // Visual indicator that video is clickable
+            newLocalVideo.style.cursor = 'pointer';
+            newLocalVideo.title = 'Click to switch camera';
+            
+            // Re-attach drag handlers
+            if (typeof initDraggableVideo === 'function') {
+                setTimeout(initDraggableVideo, 100);
             }
         }
         
-        // Stop old video track after a delay to ensure smooth transition
+        // Force button visibility check after a delay
         setTimeout(() => {
-            if (oldVideoTrack && oldVideoTrack.readyState === 'live') {
-                oldVideoTrack.stop();
-                console.log('Stopped old video track');
-            }
-        }, 500);
-        
-        return true;
-        
-    } catch (error) {
-        console.error('Failed to switch camera:', error);
-        DebugConsole?.error('Camera', `Switch failed: ${error.message}`);
-        UIManager.showError('Could not switch camera');
-        
-        // Revert to previous camera on error
-        this.currentFacingMode = this.currentFacingMode;
-        this.updateCameraIndicator();
-        return false;
-    }
-},
-
-// Call this during initialization
-async initCameras() {
-    await this.detectCameras();
+            this.updateCameraButtonVisibility();
+        }, 2000);
+    },
     
-    // Add click handler to local video for camera switching
-    const localVideo = document.getElementById('localVideo');
-    if (localVideo) {
-        // Remove any existing listeners to avoid duplicates
-        const newLocalVideo = localVideo.cloneNode(true);
-        localVideo.parentNode.replaceChild(newLocalVideo, localVideo);
-        
-        newLocalVideo.addEventListener('click', async (e) => {
-            // Prevent click during drag
-            if (window.isDragging) return;
-            
-            if (this.hasMultipleCameras && CONFIG.localStream) {
-                await this.switchCamera();
-            } else if (!this.hasMultipleCameras) {
-                DebugConsole?.info('Camera', 'No alternative camera available');
-                UIManager.showStatus('Only one camera detected');
-            }
-        });
-        
-        // Visual indicator that video is clickable
-        newLocalVideo.style.cursor = 'pointer';
-        newLocalVideo.title = 'Click to switch camera';
-        
-        // Re-attach drag handlers
-        if (typeof initDraggableVideo === 'function') {
-            setTimeout(initDraggableVideo, 100);
-        }
-    }
-    
-    // Force button visibility check after a delay
-    setTimeout(() => {
-        this.updateCameraButtonVisibility();
-    }, 2000);
-},	
- 
- checkAudioState() {
+    checkAudioState() {
         console.log('🔍 AUDIO STATE CHECK:');
         DebugConsole?.info('WebRTC', 'Audio state check');
         
