@@ -140,7 +140,7 @@ const UIManager = {
     if (CONFIG.isAdmin && typeof window.updateAdminButtonStates === 'function') {
         window.updateAdminButtonStates();
     }
-}
+},
 	
     showLoginScreen() {
         DebugConsole?.info('UI', 'Showing login screen');
