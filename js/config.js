@@ -25,7 +25,9 @@ const CONFIG = {
     hasMediaPermissions: false,
     isProcessingAnswer: false,
     
-    // User list (for admin)
+     manualHangupControl: false,
+	 
+	 // User list (for admin)
     connectedUsers: [],
     
     // DOM Elements (will be initialized later)
