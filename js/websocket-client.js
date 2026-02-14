@@ -104,75 +104,40 @@ const WebSocketClient = {
     },
     
     // ===== Update network quality based on latency =====
-	
-	
-	// ===== Update network quality based on latency =====
-updateNetworkQualityFromLatency(latency) {
-    // Keep last 5 ping times
-    this.pingTimes.push(latency);
-    if (this.pingTimes.length > 5) {
-        this.pingTimes.shift();
-    }
+    updateNetworkQualityFromLatency(latency) {
+        // Keep last 5 ping times
+        this.pingTimes.push(latency);
+        if (this.pingTimes.length > 5) {
+            this.pingTimes.shift();
+        }
+        
+        // Calculate average latency
+        const avgLatency = this.pingTimes.reduce((a, b) => a + b, 0) / this.pingTimes.length;
+        
+        // Determine quality
+        let quality;
+        if (avgLatency < 100) {
+            quality = 'excellent';
+        } else if (avgLatency < 200) {
+            quality = 'good';
+        } else if (avgLatency < 400) {
+            quality = 'fair';
+        } else {
+            quality = 'poor';
+        }
+        
+        // Only update if changed
+        if (quality !== this.networkQuality) {
+            this.networkQuality = quality;
+            console.log(`📊 Network quality: ${quality} (${Math.round(avgLatency)}ms)`);
+            DebugConsole?.network('Network', `Quality: ${quality}, Latency: ${Math.round(avgLatency)}ms`);
+            
+            if (UIManager.showNetworkQuality) {
+                UIManager.showNetworkQuality(quality);
+            }
+        }
+    },
     
-    // Calculate average latency
-    const avgLatency = this.pingTimes.reduce((a, b) => a + b, 0) / this.pingTimes.length;
-    
-    // Determine quality
-    let quality;
-    if (avgLatency < 100) {
-        quality = 'excellent';
-    } else if (avgLatency < 200) {
-        quality = 'good';
-    } else if (avgLatency < 400) {
-        quality = 'fair';
-    } else {
-        quality = 'poor';
-    }
-    
-    // Only update if changed
-    if (quality !== this.networkQuality) {
-        this.networkQuality = quality;
-        console.log(`📊 Network quality: ${quality} (${Math.round(avgLatency)}ms)`);
-        DebugConsole?.network('Network', `Quality: ${quality}, Latency: ${Math.round(avgLatency)}ms`);
-    }
-    
-    // Calculate metrics for UI
-    const metrics = {
-        latency: Math.round(avgLatency),
-        jitter: this.calculateJitter ? this.calculateJitter() : 0,
-        packetLoss: this.reconnectAttempts > 0 ? Math.min(30, this.reconnectAttempts * 5) : 0,
-        bandwidth: this.getBandwidthEstimate(avgLatency),
-        reliability: Math.max(0, Math.min(100, 100 - (avgLatency / 10) - (this.reconnectAttempts * 5)))
-    };
-    
-    // Update UI with metrics
-    if (UIManager.showNetworkMetrics) {
-        UIManager.showNetworkMetrics(metrics);
-    } else if (UIManager.showNetworkQuality) {
-        // Fallback to old method
-        UIManager.showNetworkQuality(quality);
-    }
-},
-
-// Add jitter calculation
-calculateJitter() {
-    if (this.pingTimes.length < 2) return 0;
-    let sumDiff = 0;
-    for (let i = 1; i < this.pingTimes.length; i++) {
-        sumDiff += Math.abs(this.pingTimes[i] - this.pingTimes[i-1]);
-    }
-    return Math.round(sumDiff / (this.pingTimes.length - 1));
-},
-
-// Bandwidth estimate helper
-getBandwidthEstimate(latency) {
-    if (latency < 50) return 50;
-    if (latency < 100) return 25;
-    if (latency < 200) return 10;
-    if (latency < 400) return 5;
-    return 2;
-}
-	
     disconnect() {
         this.isIntentionalClose = true;
         DebugConsole?.info('WebSocket', 'Intentional disconnect');
