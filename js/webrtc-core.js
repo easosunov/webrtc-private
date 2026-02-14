@@ -652,28 +652,61 @@ updateCameraIndicator() {
 },
 
 // Recover video if it disappears
+
+// Enhanced recover video method
 recoverVideo() {
     console.log('🔄 Attempting to recover video...');
     
     if (!CONFIG.localStream) {
         console.warn('No stream to recover');
-        return;
+        return false;
     }
     
     const localVideo = document.getElementById('localVideo');
-    if (!localVideo) return;
+    if (!localVideo) {
+        console.warn('Local video element not found');
+        return false;
+    }
+    
+    // Check if stream has video tracks
+    const videoTracks = CONFIG.localStream.getVideoTracks();
+    if (videoTracks.length === 0) {
+        console.warn('No video tracks in stream');
+        return false;
+    }
+    
+    console.log('Video track readyState:', videoTracks[0].readyState);
+    console.log('Video track enabled:', videoTracks[0].enabled);
     
     // Reattach the stream
     localVideo.srcObject = CONFIG.localStream;
     localVideo.muted = true;
     
-    // Try to play
-    localVideo.play()
-        .then(() => console.log('✅ Video recovered'))
-        .catch(e => console.log('Recovery play failed:', e));
+    // Try to play with promise handling
+    const playPromise = localVideo.play();
+    if (playPromise !== undefined) {
+        playPromise
+            .then(() => {
+                console.log('✅ Video recovered successfully');
+                DebugConsole?.success('Video', 'Video recovered');
+                return true;
+            })
+            .catch(error => {
+                console.log('Recovery play failed:', error);
+                // Try one more time with user interaction
+                document.addEventListener('click', function onClick() {
+                    localVideo.play().catch(console.log);
+                    document.removeEventListener('click', onClick);
+                }, { once: true });
+                UIManager.showStatus('Click screen to restore video');
+                return false;
+            });
+    }
+    return true;
 },
 
-// Switch camera during active call
+
+// Switch camera during active call - COMPLETELY REWRITTEN FOR RELIABILITY
 async switchCamera() {
     if (this.cameraSwitchInProgress) {
         console.log('Camera switch already in progress, skipping');
@@ -697,55 +730,78 @@ async switchCamera() {
     const newFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
     
     try {
-        // Get current audio tracks
+        // Get current audio tracks (we'll preserve these)
         const audioTracks = CONFIG.localStream.getAudioTracks();
         
         // Store old video track for cleanup
         const oldVideoTrack = CONFIG.localStream.getVideoTracks()[0];
         
-        // Create new video constraints
+        // Get current video settings to preserve resolution
+        const currentSettings = oldVideoTrack?.getSettings() || {};
+        
+        // Create new video constraints - SIMPLIFIED
         const constraints = {
             audio: false,
             video: {
                 facingMode: newFacingMode,
-                width: { ideal: 640 },
-                height: { ideal: 480 }
+                width: currentSettings.width || 640,
+                height: currentSettings.height || 480
             }
         };
         
         console.log('📷 Requesting camera with facing mode:', newFacingMode);
         
         // Get new video track
-        const tempStream = await navigator.mediaDevices.getUserMedia(constraints);
-        const newVideoTrack = tempStream.getVideoTracks()[0];
+        const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+        const newVideoTrack = newStream.getVideoTracks()[0];
         
         // Create a completely new stream
-        const newStream = new MediaStream();
+        const newLocalStream = new MediaStream();
         
         // Add existing audio tracks
         audioTracks.forEach(track => {
-            newStream.addTrack(track);
+            newLocalStream.addTrack(track);
         });
         
         // Add new video track
-        newStream.addTrack(newVideoTrack);
+        newLocalStream.addTrack(newVideoTrack);
+        
+        // Get the local video element
+        const localVideo = document.getElementById('localVideo');
+        
+        // First, pause and clear the old stream
+        if (localVideo) {
+            localVideo.pause();
+            localVideo.srcObject = null;
+        }
+        
+        // Small delay to let the browser clear
+        await new Promise(resolve => setTimeout(resolve, 50));
         
         // Update CONFIG with new stream
-        CONFIG.localStream = newStream;
+        CONFIG.localStream = newLocalStream;
         
-        // Update local video element
-        if (CONFIG.elements.localVideo) {
-            CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
+        // Set the new stream
+        if (localVideo) {
+            localVideo.srcObject = CONFIG.localStream;
+            localVideo.muted = true;
             
-            // Play with a small delay
-            setTimeout(async () => {
-                try {
-                    await CONFIG.elements.localVideo.play();
-                    console.log('✅ Local video playing after switch');
-                } catch (playError) {
-                    console.log('Play error after switch:', playError);
-                }
-            }, 100);
+            // Try to play
+            try {
+                await localVideo.play();
+                console.log('✅ Local video playing after switch');
+            } catch (playError) {
+                console.log('Initial play failed, retrying...', playError);
+                // Retry after a delay
+                setTimeout(async () => {
+                    try {
+                        await localVideo.play();
+                        console.log('✅ Local video playing after retry');
+                    } catch (e) {
+                        console.log('Final play failed:', e);
+                    }
+                }, 200);
+            }
         }
         
         // If in a call, replace the track in peer connection
@@ -773,16 +829,13 @@ async switchCamera() {
                 oldVideoTrack.stop();
                 console.log('Stopped old video track');
             }
-        }, 500);
-        
-        // Clean up temp stream
-        setTimeout(() => {
-            tempStream.getTracks().forEach(track => {
-                if (track.readyState === 'live') {
+            // Clean up the temporary stream
+            newStream.getTracks().forEach(track => {
+                if (track.readyState === 'live' && track !== newVideoTrack) {
                     track.stop();
                 }
             });
-        }, 1000);
+        }, 500);
         
         // Show success message
         const cameraIcon = newFacingMode === 'user' ? '🤳' : '📷';
@@ -800,7 +853,8 @@ async switchCamera() {
         return false;
     }
 },
-    
+	
+	
     checkAudioState() {
         console.log('🔍 AUDIO STATE CHECK:');
         DebugConsole?.info('WebRTC', 'Audio state check');
