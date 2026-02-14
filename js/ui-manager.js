@@ -264,6 +264,37 @@ const UIManager = {
             }
         }
     },
+	
+	
+	// Add to ui-manager.js
+updateCameraIndicator(facingMode) {
+    const indicator = document.getElementById('cameraIndicator');
+    if (!indicator) {
+        // Create indicator if it doesn't exist
+        const newIndicator = document.createElement('div');
+        newIndicator.id = 'cameraIndicator';
+        newIndicator.style.cssText = `
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            font-size: 20px;
+            z-index: 10000;
+            opacity: 0.7;
+            background: rgba(0,0,0,0.5);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            pointer-events: none;
+        `;
+        document.body.appendChild(newIndicator);
+    }
+    
+    const camIndicator = document.getElementById('cameraIndicator');
+    if (camIndicator) {
+        camIndicator.innerHTML = facingMode === 'user' ? '🤳 Front' : '📷 Rear';
+        camIndicator.style.display = CONFIG.localStream ? 'block' : 'none';
+    }
+},
     
     updateAdminStatus(isOnline) {
         if (CONFIG.isAdmin) return; // Don't show for admin
