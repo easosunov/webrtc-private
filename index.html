@@ -24,7 +24,7 @@
     <script src="./js/resolution-ui.js"></script>
 	
 	<!-- WebRTC Metrics -->
-	<script src="./js/webrtc-metrics.js"></script>
+    <script src="./js/webrtc-metrics.js"></script>
     
     <!-- Main initialization -->
     <script src="./js/main.js"></script>
@@ -114,7 +114,7 @@
         background: #000;
     }
     
-    /* Make local video draggable */
+    /* Make local video draggable and clickable for camera switch */
     #localVideo {
         position: fixed !important;
         width: 120px !important;
@@ -124,13 +124,22 @@
         box-shadow: 0 0 15px rgba(0,0,0,0.7);
         border-radius: 8px;
         z-index: 1000;
-        cursor: move;
+        cursor: pointer; /* Changed from 'move' to indicate clickability */
         top: 20px;
         right: 20px;
         user-select: none;
         -webkit-user-select: none;
         -moz-user-select: none;
         -ms-user-select: none;
+        transition: border 0.2s;
+    }
+    
+    #localVideo:hover {
+        border: 3px solid #4CAF50;
+    }
+    
+    #localVideo:active {
+        transform: scale(0.98);
     }
     
     /* Remote video full width */
@@ -144,7 +153,22 @@
     .video-container {
         position: relative;
         width: 100%;
-        margin-top: 5px; /* Reduced from 10px */
+        margin-top: 5px;
+    }
+    
+    /* Camera indicator badge */
+    .camera-badge {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        background: rgba(0,0,0,0.6);
+        color: white;
+        padding: 4px 8px;
+        border-radius: 20px;
+        font-size: 14px;
+        z-index: 1001;
+        pointer-events: none;
+        display: none;
     }
     
     /* Hidden buttons */
@@ -318,30 +342,30 @@
     
     /* Call screen styles */
     .user-line {
-        padding: 8px 10px; /* Reduced padding */
-        margin: 3px 0; /* Reduced margin */
+        padding: 8px 10px;
+        margin: 3px 0;
         border: 1px solid #ddd;
         display: flex;
         align-items: center;
         background: white;
-        border-radius: 6px; /* Slightly smaller radius */
+        border-radius: 6px;
     }
     
     .username {
         flex-grow: 1;
         font-weight: bold;
-        font-size: 0.95rem; /* Slightly smaller */
+        font-size: 0.95rem;
     }
     
     button:not(.keypad-btn):not(.clear-btn):not(.hidden-button) {
-        margin: 0 4px; /* Reduced margin */
-        padding: 6px 12px; /* Reduced padding */
+        margin: 0 4px;
+        padding: 6px 12px;
         cursor: pointer;
         border: 1px solid #ccc;
-        border-radius: 4px; /* Smaller radius */
+        border-radius: 4px;
         background: #4CAF50;
         color: white;
-        font-size: 0.85rem; /* Smaller font */
+        font-size: 0.85rem;
     }
     
     button:disabled:not(.keypad-btn):not(.clear-btn):not(.hidden-button) {
@@ -368,52 +392,52 @@
     }
     
     #userView, #adminView {
-        margin: 10px 0; /* Reduced from 20px */
+        margin: 10px 0;
     }
     
     h3 {
         border-bottom: 2px solid #4CAF50;
-        padding-bottom: 3px; /* Reduced */
-        margin-bottom: 10px; /* Reduced from 15px */
-        font-size: 1.1rem; /* Smaller */
+        padding-bottom: 3px;
+        margin-bottom: 10px;
+        font-size: 1.1rem;
     }
     
     /* Shortcut hints */
     .shortcut-hint {
-        font-size: 0.65rem; /* Smaller */
+        font-size: 0.65rem;
         color: #666;
-        margin-left: 4px; /* Reduced */
+        margin-left: 4px;
         font-style: italic;
     }
     
-    /* Connection status - SUBTLE BLACK AND WHITE VERSION */
+    /* Connection status */
     .connection-status {
-        margin: 2px 0; /* Reduced margin */
-        padding: 4px 8px; /* Reduced padding */
-        background: #ffffff; /* White background */
-        border-radius: 3px; /* Smaller radius */
-        border: 1px solid #333333; /* Black border */
-        font-weight: normal; /* Not bold */
-        color: #333333; /* Black text */
+        margin: 2px 0;
+        padding: 4px 8px;
+        background: #ffffff;
+        border-radius: 3px;
+        border: 1px solid #333333;
+        font-weight: normal;
+        color: #333333;
         text-align: center;
         display: none;
-        font-size: 0.8rem; /* Smaller font */
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1); /* Subtle shadow */
+        font-size: 0.8rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
     
     .connection-status.connecting {
-        background: #f5f5f5; /* Light gray */
-        border-color: #666666; /* Dark gray */
-        color: #333333; /* Black text */
+        background: #f5f5f5;
+        border-color: #666666;
+        color: #333333;
     }
     
     .connection-status.connected {
-        background: #f0f0f0; /* Slightly darker gray */
-        border-color: #444444; /* Dark gray */
-        color: #222222; /* Darker black */
+        background: #f0f0f0;
+        border-color: #444444;
+        color: #222222;
     }
     
-    /* User selector dropdown styles (NEW) */
+    /* User selector dropdown styles */
     .user-selector {
         margin: 10px 0;
     }
@@ -435,6 +459,23 @@
         background: #f5f5f5;
     }
     
+    /* Camera switch button */
+    .camera-switch-btn {
+        background: #2196F3;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 6px 12px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        margin: 5px;
+        display: none;
+    }
+    
+    .camera-switch-btn:hover {
+        background: #1976D2;
+    }
+    
     @media (max-width: 768px) {
         #localVideo {
             width: 100px !important;
@@ -442,7 +483,7 @@
         }
         
         #remoteVideo {
-            height: calc(100vh - 200px) !important; /* Adjusted for reduced spacing */
+            height: calc(100vh - 200px) !important;
             object-fit: cover;
         }
         
@@ -512,15 +553,18 @@
 </head>
 <body>
 	
+	<!-- Network indicators - side by side -->
 	<div style="position: fixed; top: 5px; right: 5px; display: flex; gap: 10px; z-index: 10000;">
-    <!-- Signaling server indicator (existing) -->
-    <div id="networkIndicator" style="font-size: 24px; opacity: 0.7; background: rgba(255,255,255,0.8); padding: 5px 10px; border-radius: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); cursor: pointer;" title="Signaling server connection">📶 0ms</div>
+        <!-- Signaling server indicator -->
+        <div id="networkIndicator" style="font-size: 24px; opacity: 0.7; background: rgba(255,255,255,0.8); padding: 5px 10px; border-radius: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); cursor: pointer;" title="Signaling server connection">📶 0ms</div>
+        
+        <!-- WebRTC peer connection indicator -->
+        <div id="webrtcIndicator" style="font-size: 24px; opacity: 0.7; background: rgba(255,255,255,0.8); padding: 5px 10px; border-radius: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); cursor: pointer;" title="Peer-to-peer connection">🔄 0ms</div>
+    </div>
     
-    <!-- WebRTC peer connection indicator (NEW) -->
-    <div id="webrtcIndicator" style="font-size: 24px; opacity: 0.7; background: rgba(255,255,255,0.8); padding: 5px 10px; border-radius: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); cursor: pointer;" title="Peer-to-peer connection">🔄 0ms</div>
-</div>
-	
-	
+    <!-- Camera indicator badge (will be shown when camera is active) -->
+    <div id="cameraIndicator" class="camera-badge">🤳 Front</div>
+    
     <div id="login">
         
         <!-- Hidden input for keyboard support -->
@@ -623,11 +667,11 @@
             </div>
         </div>
         
-        <!-- Administrator View - MODIFIED -->
+        <!-- Administrator View -->
         <div id="adminView">
             <h3>Call User</h3>
             
-            <!-- User selector dropdown (like resolution control) -->
+            <!-- User selector dropdown -->
             <div class="user-selector">
                 <select id="userDropdown" class="user-dropdown">
                     <option value="">-- Select a user to call --</option>
@@ -645,15 +689,18 @@
                 <button id="adminCallBtn" onclick="callSelectedUser()" disabled>Call</button>
                 <button id="adminHangupBtn" onclick="hangup()" disabled>Hang Up<span class="shortcut-hint">(Esc)</span></button>
             </div>
+            
+            <!-- Camera switch button (visible when multiple cameras) -->
+            <button id="switchCameraBtn" class="camera-switch-btn" onclick="switchCamera()">🔄 Switch Camera</button>
         </div>
         
-        <div style="margin-top: 15px; padding-top: 8px;"> <!-- Reduced margins -->
+        <div style="margin-top: 15px; padding-top: 8px;">
             <!-- Connection status display -->
             <div id="connectionStatus" class="connection-status"></div>
             
             <div class="video-container">
                 <video id="remoteVideo" autoplay playsinline></video>
-                <!-- Local video is draggable -->
+                <!-- Local video is draggable and clickable for camera switch -->
                 <video id="localVideo" autoplay playsinline muted></video>
             </div>
             <!-- Hidden Play Videos button -->
@@ -663,7 +710,7 @@
         <!-- Resolution controls will be inserted here by resolution-ui.js -->
         <!-- Logout button will be below resolution controls -->
         
-        <div style="margin-top: 15px;"> <!-- Reduced margin -->
+        <div style="margin-top: 15px;">
             <button onclick="logout()" style="background: #ff4444; color: white; padding: 6px 12px; font-size: 0.85rem;">Logout<span class="shortcut-hint">(Ctrl+Shift+L)</span></button>
             <!-- Hidden Debug button -->
             <button onclick="debug()" class="hidden-button">Debug</button>
@@ -1007,6 +1054,16 @@ function submitCode() {
             }
         }
         
+        // ==== NEW: Camera switch function ====
+        function switchCamera() {
+            if (window.WebRTCManager && WebRTCManager.switchCamera) {
+                WebRTCManager.switchCamera();
+            } else {
+                console.warn('Camera switching not available');
+                UIManager.showError('Camera switching not supported');
+            }
+        }
+        
         // ==== NEW: Update admin dropdown when user list changes ====
         function updateAdminDropdown(users) {
             if (!CONFIG.isAdmin) return;
@@ -1097,7 +1154,7 @@ function submitCode() {
             updateAdminButtonStates();
         }
         
-        // Simple draggable video - NO changes to existing login code
+        // Simple draggable video - MODIFIED for camera switch
         function initDraggableVideo() {
             const localVideo = document.getElementById('localVideo');
             if (!localVideo) return;
@@ -1108,6 +1165,14 @@ function submitCode() {
             // Make video draggable
             localVideo.addEventListener('mousedown', startDrag);
             localVideo.addEventListener('touchstart', startDrag, { passive: false });
+            
+            // ===== ADDED: Camera switch on click =====
+            localVideo.addEventListener('click', function(e) {
+                // Only trigger camera switch if not dragging
+                if (!isDragging) {
+                    switchCamera();
+                }
+            });
             
             function startDrag(e) {
                 e.preventDefault();
