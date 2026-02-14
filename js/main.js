@@ -26,7 +26,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             ResolutionUI.init();
         }
         
-        // 7. Setup global functions
+        // 7. Initialize camera detection (NEW)
+        if (window.WebRTCManager && WebRTCManager.initCameras) {
+            await WebRTCManager.initCameras();
+        }
+        
+        // 8. Setup global functions
         setupGlobalFunctions();
         
         UIManager.showStatus('Ready to login');
@@ -217,12 +222,11 @@ function setupGlobalFunctions() {
     window.hangup = CallManager.hangup.bind(CallManager);
     window.callUser = CallManager.callUser.bind(CallManager);
     
-	window.callSelectedUser = callSelectedUser; // Already defined in index.html
-	window.updateAdminDropdown = updateAdminDropdown; // Already defined in index.html
-	window.updateAdminButtonStates = updateAdminButtonStates; // Already defined in index.html
-	window.handleUserDropdownChange = handleUserDropdownChange; // Already defined in index.html
-	
-	
+    window.callSelectedUser = callSelectedUser; // Already defined in index.html
+    window.updateAdminDropdown = updateAdminDropdown; // Already defined in index.html
+    window.updateAdminButtonStates = updateAdminButtonStates; // Already defined in index.html
+    window.handleUserDropdownChange = handleUserDropdownChange; // Already defined in index.html
+    
     // Admin call shortcut
     window.callAdmin = function() {
         if (CONFIG.adminSocketId) {
@@ -284,6 +288,16 @@ function setupGlobalFunctions() {
         setTimeout(() => pc.close(), 3000);
     };
     
+    // Camera switching function (NEW)
+    window.switchCamera = async function() {
+        if (window.WebRTCManager && WebRTCManager.switchCamera) {
+            await WebRTCManager.switchCamera();
+        } else {
+            console.warn('Camera switching not available');
+            UIManager.showError('Camera switching not supported');
+        }
+    };
+    
     // Debug function
     window.debug = function() {
         console.log('=== DEBUG INFO ===');
@@ -293,6 +307,8 @@ function setupGlobalFunctions() {
         console.log('In Call:', CONFIG.isInCall);
         console.log('Admin Online:', !!CONFIG.adminSocketId);
         console.log('Connected Users:', CONFIG.connectedUsers.length);
+        console.log('Has Multiple Cameras:', window.WebRTCManager?.hasMultipleCameras || false);
+        console.log('Current Camera:', window.WebRTCManager?.currentFacingMode || 'unknown');
         console.log('==================');
     };
     
