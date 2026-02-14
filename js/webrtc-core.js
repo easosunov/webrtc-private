@@ -423,11 +423,32 @@ async detectCameras() {
         videoDevices.forEach((device, index) => {
             console.log(`  Camera ${index + 1}: ${device.label || 'Unnamed'}`);
         });
-        
+        this.updateCameraButtonVisibility();
         return videoDevices;
     } catch (error) {
         console.error('Failed to detect cameras:', error);
         return [];
+    }
+},
+
+
+updateCameraButtonVisibility() {
+    const switchBtn = document.getElementById('switchCameraBtn');
+    if (switchBtn) {
+        switchBtn.style.display = this.hasMultipleCameras ? 'inline-block' : 'none';
+        console.log(`Camera button ${this.hasMultipleCameras ? 'shown' : 'hidden'}`);
+    }
+},
+
+updateCameraIndicator() {
+    const indicator = document.getElementById('cameraIndicator');
+    if (indicator) {
+        if (CONFIG.localStream && CONFIG.localStream.getVideoTracks().length > 0) {
+            indicator.style.display = 'block';
+            indicator.innerHTML = this.currentFacingMode === 'user' ? '🤳 Front' : '📷 Rear';
+        } else {
+            indicator.style.display = 'none';
+        }
     }
 },
 
@@ -443,7 +464,7 @@ async switchCamera() {
     
     // Toggle facing mode
     const newFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
-    
+    this.updateCameraIndicator();
     try {
         // Get current audio tracks to preserve them
         const audioTracks = CONFIG.localStream.getAudioTracks();
