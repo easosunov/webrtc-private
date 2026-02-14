@@ -96,60 +96,81 @@ const AuthManager = {
             return false;
         }
     },
+ 
+ 
+ 
+ async ensureMediaPermissions() {
+    if (CONFIG.hasMediaPermissions && CONFIG.localStream) {
+        return true;
+    }
     
-    async ensureMediaPermissions() {
-        if (CONFIG.hasMediaPermissions && CONFIG.localStream) {
+    try {
+        UIManager.showStatus('Requesting camera/microphone access...');
+        
+        // Use dynamic constraints from Resolution Manager if available
+        let constraints;
+        if (window.ResolutionManager && typeof ResolutionManager.getStreamWithCurrentResolution === 'function') {
+            // Let ResolutionManager handle stream creation with current resolution
+            CONFIG.localStream = await ResolutionManager.getStreamWithCurrentResolution();
+            CONFIG.hasMediaPermissions = true;
+            
+            if (CONFIG.elements && CONFIG.elements.localVideo) {
+                CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
+                CONFIG.elements.localVideo.muted = true;
+                CONFIG.elements.localVideo.play().catch(e => console.log('Local video play:', e));
+            }
+            
+            // ===== ADD THIS LINE =====
+            // Initialize cameras now that we have a stream
+            if (window.WebRTCManager && WebRTCManager.initCameras) {
+                setTimeout(() => {
+                    WebRTCManager.initCameras();
+                }, 500);
+            }
+            
+            console.log('✅ Media permissions granted with resolution control');
+            return true;
+        } else {
+            // Fallback to original hardcoded constraints
+            constraints = {
+                audio: true,
+                video: {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    frameRate: { ideal: 24 }
+                }
+            };
+            
+            CONFIG.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+            CONFIG.hasMediaPermissions = true;
+            
+            if (CONFIG.elements && CONFIG.elements.localVideo) {
+                CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
+                CONFIG.elements.localVideo.muted = true;
+                CONFIG.elements.localVideo.play().catch(e => console.log('Local video play:', e));
+            }
+            
+            // ===== ADD THIS LINE =====
+            // Initialize cameras now that we have a stream
+            if (window.WebRTCManager && WebRTCManager.initCameras) {
+                setTimeout(() => {
+                    WebRTCManager.initCameras();
+                }, 500);
+            }
+            
+            console.log('✅ Media permissions granted');
             return true;
         }
         
-        try {
-            UIManager.showStatus('Requesting camera/microphone access...');
-            
-            // Use dynamic constraints from Resolution Manager if available
-            let constraints;
-            if (window.ResolutionManager && typeof ResolutionManager.getStreamWithCurrentResolution === 'function') {
-                // Let ResolutionManager handle stream creation with current resolution
-                CONFIG.localStream = await ResolutionManager.getStreamWithCurrentResolution();
-                CONFIG.hasMediaPermissions = true;
-                
-                if (CONFIG.elements && CONFIG.elements.localVideo) {
-                    CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
-                    CONFIG.elements.localVideo.muted = true;
-                    CONFIG.elements.localVideo.play().catch(e => console.log('Local video play:', e));
-                }
-                
-                console.log('✅ Media permissions granted with resolution control');
-                return true;
-            } else {
-                // Fallback to original hardcoded constraints
-                constraints = {
-                    audio: true,
-                    video: {
-                        width: { ideal: 640 },
-                        height: { ideal: 480 },
-                        frameRate: { ideal: 24 }
-                    }
-                };
-                
-                CONFIG.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-                CONFIG.hasMediaPermissions = true;
-                
-                if (CONFIG.elements && CONFIG.elements.localVideo) {
-                    CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
-                    CONFIG.elements.localVideo.muted = true;
-                    CONFIG.elements.localVideo.play().catch(e => console.log('Local video play:', e));
-                }
-                
-                console.log('✅ Media permissions granted');
-                return true;
-            }
-            
-        } catch (error) {
-            console.error('Failed to get media permissions:', error);
-            UIManager.showError('Camera/microphone access is required for calls');
-            return false;
-        }
+    } catch (error) {
+        console.error('Failed to get media permissions:', error);
+        UIManager.showError('Camera/microphone access is required for calls');
+        return false;
     }
+}
+ 
+ 
+	
 };
 
 window.AuthManager = AuthManager;
