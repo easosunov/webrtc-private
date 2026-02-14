@@ -502,49 +502,46 @@ const CallManager = {
         UIManager.showStatus('Call ended by ' + (data.endedByName || 'remote user'));
     },
     
-    hangup() {
-        console.log('=== CallManager.hangup() - stopping monitoring ===');
-        DebugConsole?.call('Call', 'Ending call');
+	
+	hangup() {
+    console.log('=== CallManager.hangup() - stopping monitoring ===');
+    DebugConsole?.call('Call', 'Ending call');
+    
+    // Clean up status monitoring
+    if (typeof stopMonitoring !== 'undefined') {
+        stopMonitoring();
+    }
+    if (typeof hideConnectionStatus !== 'undefined') {
+        hideConnectionStatus();
+    }
+    
+    console.log('Ending call');
+    UIManager.showStatus('Ending call...');
+    
+    // If we haven't even connected yet, just clean up locally
+    if (!CONFIG.peerConnection || CONFIG.peerConnection.connectionState === 'new' || CONFIG.peerConnection.connectionState === 'connecting') {
+        console.log('Call cancelled before connection established');
+        DebugConsole?.info('Call', 'Call cancelled before connection');
         
-        // Clean up status monitoring
-        if (typeof stopMonitoring !== 'undefined') {
-            stopMonitoring();
-        }
-        if (typeof hideConnectionStatus !== 'undefined') {
-            hideConnectionStatus();
-        }
-        
-        console.log('Ending call');
-        UIManager.showStatus('Ending call...');
-        
-        // If we haven't even connected yet, just clean up
-        if (!CONFIG.peerConnection || CONFIG.peerConnection.connectionState === 'new' || CONFIG.peerConnection.connectionState === 'connecting') {
-            console.log('Call cancelled before connection established');
-            DebugConsole?.info('Call', 'Call cancelled before connection');
-            
-            // Send cancel message to server if needed
-            if (CONFIG.targetSocketId) {
-                WebSocketClient.sendToServer({
-                    type: 'call-cancel',
-                    targetSocketId: CONFIG.targetSocketId
-                });
-            }
-            
-            this.cleanupCall();
-            return;
-        }
-        
-        // Normal hangup for connected call
-        if (CONFIG.targetSocketId) {
-            WebSocketClient.sendToServer({
-                type: 'call-end',
-                targetSocketId: CONFIG.targetSocketId
-            });
-        }
+        // REMOVED: Don't send call-cancel to server
+        // Just clean up locally
         
         this.cleanupCall();
-    },
+        return;
+    }
     
+    // Normal hangup for connected call
+    if (CONFIG.targetSocketId) {
+        WebSocketClient.sendToServer({
+            type: 'call-end',
+            targetSocketId: CONFIG.targetSocketId
+        });
+    }
+    
+    this.cleanupCall();
+}
+	
+	
     cleanupCall() {
         console.log('Cleaning up call...');
         DebugConsole?.info('Call', 'Cleaning up call resources');
