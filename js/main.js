@@ -26,10 +26,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             ResolutionUI.init();
         }
         
-        // 7. Initialize camera detection (NEW)
-        if (window.WebRTCManager && WebRTCManager.initCameras) {
-            await WebRTCManager.initCameras();
-        }
+        
         
         // 8. Setup global functions
         setupGlobalFunctions();
