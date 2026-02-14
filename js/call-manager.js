@@ -541,6 +541,11 @@ const CallManager = {
     cleanupCall() {
         console.log('Cleaning up call...');
         DebugConsole?.info('Call', 'Cleaning up call resources');
+		
+		// Stop WebRTC metrics monitoring
+    if (window.WebRTCMetrics) {
+        WebRTCMetrics.stop();
+    }
         
         // Stop any notification sound
         this.stopNotificationSound();
