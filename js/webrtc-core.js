@@ -1,4 +1,4 @@
-// js/webrtc-core.js - COMPLETE WITH DEBUG LOGGING
+// js/webrtc-core.js - COMPLETE WITH DISCONNECT HANDLING
 const WebRTCManager = {
     createPeerConnection() {
         console.log('🔗 Creating peer connection...');
@@ -134,7 +134,7 @@ const WebRTCManager = {
             }
         };
         
-        // Connection state monitoring
+        // ===== FIXED: Connection state monitoring with disconnect handling =====
         CONFIG.peerConnection.onconnectionstatechange = () => {
             console.log('🔗 Connection state:', CONFIG.peerConnection.connectionState);
             DebugConsole?.info('WebRTC', `Connection state: ${CONFIG.peerConnection.connectionState}`);
@@ -153,37 +153,73 @@ const WebRTCManager = {
                         const audioTracks = CONFIG.remoteStream.getAudioTracks();
                         console.log(`🔊 Connected! Remote audio tracks: ${audioTracks.length}`);
                         DebugConsole?.info('WebRTC', `Connected! Remote audio tracks: ${audioTracks.length}`);
-                        
-                        // Also log connection success to debug console
                         DebugConsole?.success('Call', 'Call connected successfully');
                     }, 500);
                     break;
                     
                 case 'disconnected':
-                    DebugConsole?.warning('WebRTC', 'Peer connection disconnected');
-                    break;
-                    
                 case 'failed':
-                    DebugConsole?.error('WebRTC', 'Peer connection failed');
+                    console.log(`⚠️ Peer connection ${CONFIG.peerConnection.connectionState}`);
+                    DebugConsole?.warning('WebRTC', `Peer connection ${CONFIG.peerConnection.connectionState}`);
+                    
+                    // Don't clean up immediately - give it a chance to recover
+                    setTimeout(() => {
+                        if (CONFIG.peerConnection && 
+                            (CONFIG.peerConnection.connectionState === 'disconnected' || 
+                             CONFIG.peerConnection.connectionState === 'failed')) {
+                            console.log('❌ Connection not recovered, cleaning up');
+                            DebugConsole?.call('Call', 'Call ended unexpectedly');
+                            
+                            // Force UI update
+                            if (CONFIG.isAdmin) {
+                                const adminHangupBtn = document.getElementById('adminHangupBtn');
+                                if (adminHangupBtn) {
+                                    adminHangupBtn.disabled = true;
+                                    adminHangupBtn.className = 'btn-hangup';
+                                }
+                            } else {
+                                const userHangupBtn = document.querySelector('.btn-hangup');
+                                if (userHangupBtn) {
+                                    userHangupBtn.disabled = true;
+                                    userHangupBtn.className = 'btn-hangup';
+                                }
+                            }
+                            
+                            CallManager.cleanupCall();
+                            UIManager.showStatus('Call disconnected');
+                        }
+                    }, 3000); // Wait 3 seconds for possible recovery
                     break;
                     
                 case 'closed':
-                    console.log('❌ Peer connection ended');
+                    console.log('❌ Peer connection closed');
                     DebugConsole?.info('WebRTC', 'Peer connection closed');
-                    if (CONFIG.peerConnection.connectionState === 'closed') {
-                        CallManager.cleanupCall();
-                    }
+                    CallManager.cleanupCall();
                     break;
             }
         };
         
-        // Also monitor ICE connection state
+        // ===== ADDED: ICE connection state monitoring =====
         CONFIG.peerConnection.oniceconnectionstatechange = () => {
             console.log('🧊 ICE connection state:', CONFIG.peerConnection.iceConnectionState);
             DebugConsole?.network('WebRTC', `ICE connection state: ${CONFIG.peerConnection.iceConnectionState}`);
             
+            if (CONFIG.peerConnection.iceConnectionState === 'disconnected') {
+                console.log('⚠️ ICE disconnected, waiting for recovery...');
+            }
+            
             if (CONFIG.peerConnection.iceConnectionState === 'failed') {
-                DebugConsole?.error('WebRTC', 'ICE connection failed - NAT/Firewall may be blocking');
+                console.log('❌ ICE failed - connection dead');
+                DebugConsole?.error('WebRTC', 'ICE connection failed');
+                
+                // Force cleanup after ICE failure
+                setTimeout(() => {
+                    if (CONFIG.peerConnection && 
+                        CONFIG.peerConnection.iceConnectionState === 'failed') {
+                        CallManager.cleanupCall();
+                        UIManager.showStatus('Call disconnected (network error)');
+                    }
+                }, 1000);
             }
         };
         
@@ -365,7 +401,6 @@ const WebRTCManager = {
         DebugConsole?.info('WebRTC', 'ICE candidate queue cleared');
     },
     
-    // Keep your existing debug function
     checkAudioState() {
         console.log('🔍 AUDIO STATE CHECK:');
         DebugConsole?.info('WebRTC', 'Audio state check');
