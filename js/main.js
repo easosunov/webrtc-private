@@ -26,7 +26,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             ResolutionUI.init();
         }
         
-        
+        // 7. Initialize camera detection (NEW)
+        if (window.WebRTCManager && WebRTCManager.initCameras) {
+            await WebRTCManager.initCameras();
+        }
         
         // 8. Setup global functions
         setupGlobalFunctions();
@@ -67,13 +70,36 @@ async function loadIceServers() {
             }
             
             if (iceServers && iceServers.length > 0) {
+                // Add public TURN servers as fallback
+                const publicTurnServers = [
+                    {
+                        urls: 'turn:openrelay.metered.ca:80',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    },
+                    {
+                        urls: 'turn:openrelay.metered.ca:443',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    },
+                    {
+                        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    }
+                ];
+                
+                // Merge primary servers with public fallbacks
+                const allServers = [...iceServers, ...publicTurnServers];
+                
                 CONFIG.peerConfig = {
-                    iceServers: iceServers,
+                    iceServers: allServers,
                     iceCandidatePoolSize: 10,
                     iceTransportPolicy: 'all'
                 };
                 CONFIG.iceSource = source.name;
-                console.log(`✓ ICE servers from ${source.name}: ${iceServers.length} servers`);
+                console.log(`✓ ICE servers from ${source.name}: ${iceServers.length} servers + public fallbacks`);
+                console.log('📡 TURN servers include public relays for better connectivity');
                 return;
             }
         } catch (error) {
@@ -82,19 +108,37 @@ async function loadIceServers() {
         }
     }
     
-    // Fallback: Public STUN servers
-    console.log('Using public STUN fallback');
+    // Fallback: Public STUN servers + public TURN
+    console.log('Using public STUN + TURN fallback');
     CONFIG.peerConfig = {
         iceServers: [
+            // STUN servers
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' },
             { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' }
+            { urls: 'stun:stun4.l.google.com:19302' },
+            
+            // Public TURN servers
+            {
+                urls: 'turn:openrelay.metered.ca:80',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            },
+            {
+                urls: 'turn:openrelay.metered.ca:443',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            },
+            {
+                urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            }
         ],
         iceCandidatePoolSize: 10
     };
-    CONFIG.iceSource = 'public-stun';
+    CONFIG.iceSource = 'public-stun-turn';
 }
 
 async function getDirectTwilioServers() {
@@ -164,7 +208,14 @@ function handleInitializationError(error) {
     
     // Set minimal configuration for recovery
     CONFIG.peerConfig = CONFIG.peerConfig || {
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            {
+                urls: 'turn:openrelay.metered.ca:443',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            }
+        ]
     };
     
     // Show retry button
@@ -306,6 +357,7 @@ function setupGlobalFunctions() {
         console.log('Connected Users:', CONFIG.connectedUsers.length);
         console.log('Has Multiple Cameras:', window.WebRTCManager?.hasMultipleCameras || false);
         console.log('Current Camera:', window.WebRTCManager?.currentFacingMode || 'unknown');
+        console.log('ICE Servers:', CONFIG.peerConfig?.iceServers?.length || 0);
         console.log('==================');
     };
     
@@ -392,22 +444,6 @@ function setupGlobalFunctions() {
     
     console.log('Environment:', CONFIG.environment);
 })();
-
-// ========== VIDEO STABILITY MONITOR ==========
-// Monitor video element and recover if it stops
-setInterval(() => {
-    const localVideo = document.getElementById('localVideo');
-    if (localVideo && CONFIG.localStream && CONFIG.isInCall) {
-        // Check if video is actually playing
-        if (localVideo.readyState === 0 || localVideo.paused) {
-            console.log('Video not playing, attempting recovery...');
-            if (window.WebRTCManager && WebRTCManager.recoverVideo) {
-                WebRTCManager.recoverVideo();
-            }
-        }
-    }
-}, 3000);
-
 
 // Export for testing (if needed)
 if (typeof module !== 'undefined' && module.exports) {
