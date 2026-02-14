@@ -401,6 +401,131 @@ const WebRTCManager = {
         DebugConsole?.info('WebRTC', 'ICE candidate queue cleared');
     },
     
+	// Add these methods to webrtc-core.js
+
+// Check if device has multiple cameras
+hasMultipleCameras: false,
+
+// Current camera facing mode
+currentFacingMode: 'user', // 'user' = front, 'environment' = rear
+
+// Initialize camera detection
+async detectCameras() {
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        
+        this.hasMultipleCameras = videoDevices.length > 1;
+        
+        console.log(`📷 Detected ${videoDevices.length} camera(s)`);
+        DebugConsole?.info('Camera', `Detected ${videoDevices.length} camera(s)`);
+        
+        videoDevices.forEach((device, index) => {
+            console.log(`  Camera ${index + 1}: ${device.label || 'Unnamed'}`);
+        });
+        
+        return videoDevices;
+    } catch (error) {
+        console.error('Failed to detect cameras:', error);
+        return [];
+    }
+},
+
+// Switch camera during active call
+async switchCamera() {
+    if (!CONFIG.localStream) {
+        console.warn('No local stream to switch camera');
+        return false;
+    }
+    
+    console.log('🔄 Attempting to switch camera');
+    DebugConsole?.info('Camera', 'Switching camera...');
+    
+    // Toggle facing mode
+    const newFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
+    
+    try {
+        // Get current audio tracks to preserve them
+        const audioTracks = CONFIG.localStream.getAudioTracks();
+        
+        // Stop current video tracks
+        CONFIG.localStream.getVideoTracks().forEach(track => track.stop());
+        
+        // Get new video track with opposite facing mode
+        const constraints = {
+            audio: false, // Don't request audio again
+            video: {
+                facingMode: newFacingMode,
+                width: CONFIG.mediaConstraints?.video?.width || { ideal: 640 },
+                height: CONFIG.mediaConstraints?.video?.height || { ideal: 480 }
+            }
+        };
+        
+        const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+        const newVideoTrack = newStream.getVideoTracks()[0];
+        
+        // Add the new video track to existing stream
+        CONFIG.localStream.addTrack(newVideoTrack);
+        
+        // Update local video element
+        if (CONFIG.elements.localVideo) {
+            CONFIG.elements.localVideo.srcObject = CONFIG.localStream;
+        }
+        
+        // If in a call, replace the track in peer connection
+        if (CONFIG.peerConnection && CONFIG.isInCall) {
+            const senders = CONFIG.peerConnection.getSenders();
+            const videoSender = senders.find(sender => 
+                sender.track && sender.track.kind === 'video'
+            );
+            
+            if (videoSender) {
+                await videoSender.replaceTrack(newVideoTrack);
+                console.log('✅ Video track replaced in peer connection');
+                DebugConsole?.success('Camera', 'Switched camera successfully');
+            }
+        }
+        
+        // Update current facing mode
+        this.currentFacingMode = newFacingMode;
+        
+        // Show indicator of which camera is active
+        const cameraIcon = newFacingMode === 'user' ? '🤳' : '📷';
+        UIManager.showStatus(`${cameraIcon} ${newFacingMode === 'user' ? 'Front' : 'Rear'} camera`);
+        
+        return true;
+        
+    } catch (error) {
+        console.error('Failed to switch camera:', error);
+        DebugConsole?.error('Camera', `Switch failed: ${error.message}`);
+        UIManager.showError('Could not switch camera');
+        return false;
+    }
+},
+
+// Call this during initialization
+async initCameras() {
+    await this.detectCameras();
+    
+    // Add click handler to local video for camera switching
+    const localVideo = document.getElementById('localVideo');
+    if (localVideo) {
+        localVideo.addEventListener('click', async () => {
+            if (this.hasMultipleCameras && CONFIG.localStream) {
+                await this.switchCamera();
+            } else {
+                DebugConsole?.info('Camera', 'No alternative camera available');
+                UIManager.showStatus('Only one camera detected');
+            }
+        });
+        
+        // Visual indicator that video is clickable
+        localVideo.style.cursor = 'pointer';
+        localVideo.title = 'Click to switch camera';
+    }
+},
+	
+	
     checkAudioState() {
         console.log('🔍 AUDIO STATE CHECK:');
         DebugConsole?.info('WebRTC', 'Audio state check');
