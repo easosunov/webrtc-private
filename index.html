@@ -22,6 +22,9 @@
     <script src="./js/resolution-config.js"></script>
     <script src="./js/resolution-manager.js"></script>
     <script src="./js/resolution-ui.js"></script>
+	
+	<!-- WebRTC Metrics -->
+	<script src="./js/webrtc-metrics.js"></script>
     
     <!-- Main initialization -->
     <script src="./js/main.js"></script>
@@ -508,9 +511,17 @@
     
 </head>
 <body>
-	<div style="position: fixed; top: 5px; right: 5px; font-size: 24px; z-index: 2000; opacity: 0.7; background: rgba(255,255,255,0.8); padding: 5px 10px; border-radius: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);" id="networkIndicator">📶</div>
+	
+	<div style="position: fixed; top: 5px; right: 5px; display: flex; gap: 10px; z-index: 10000;">
+    <!-- Signaling server indicator (existing) -->
+    <div id="networkIndicator" style="font-size: 24px; opacity: 0.7; background: rgba(255,255,255,0.8); padding: 5px 10px; border-radius: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); cursor: pointer;" title="Signaling server connection">📶 0ms</div>
+    
+    <!-- WebRTC peer connection indicator (NEW) -->
+    <div id="webrtcIndicator" style="font-size: 24px; opacity: 0.7; background: rgba(255,255,255,0.8); padding: 5px 10px; border-radius: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); cursor: pointer;" title="Peer-to-peer connection">🔄 0ms</div>
+</div>
+	
+	
     <div id="login">
-        <!-- REMOVED: <h2 style="text-align: center; margin-bottom: 30px;">Private WebRTC Communicator</h2> -->
         
         <!-- Hidden input for keyboard support -->
         <input type="text" id="hiddenAccessCode" inputmode="numeric" pattern="[0-9+]*" autocomplete="off">
