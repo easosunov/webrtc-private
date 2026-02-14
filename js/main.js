@@ -70,27 +70,61 @@ async function loadIceServers() {
             }
             
             if (iceServers && iceServers.length > 0) {
-                // Add public TURN servers as fallback
-                const publicTurnServers = [
-                    {
-                        urls: 'turn:openrelay.metered.ca:80',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    },
-                    {
-                        urls: 'turn:openrelay.metered.ca:443',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    },
-                    {
-                        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    }
-                ];
+                // Extract Twilio credentials from the first TURN server
+                const turnServer = iceServers.find(s => s.urls?.includes('turn:'));
+                const twilioUsername = turnServer?.username;
+                const twilioPassword = turnServer?.credential;
                 
-                // Merge primary servers with public fallbacks
-                const allServers = [...iceServers, ...publicTurnServers];
+                // Add regional Twilio TURN servers for better geographic routing
+                const regionalTurnServers = [];
+                
+                if (twilioUsername && twilioPassword) {
+                    regionalTurnServers.push(
+                        {
+                            urls: 'turn:us-east.turn.twilio.com:3478?transport=udp',
+                            username: twilioUsername,
+                            credential: twilioPassword
+                        },
+                        {
+                            urls: 'turn:us-east.turn.twilio.com:3478?transport=tcp',
+                            username: twilioUsername,
+                            credential: twilioPassword
+                        },
+                        {
+                            urls: 'turn:us-west.turn.twilio.com:3478?transport=udp',
+                            username: twilioUsername,
+                            credential: twilioPassword
+                        },
+                        {
+                            urls: 'turn:us-west.turn.twilio.com:3478?transport=tcp',
+                            username: twilioUsername,
+                            credential: twilioPassword
+                        },
+                        {
+                            urls: 'turn:eu.turn.twilio.com:3478?transport=udp',
+                            username: twilioUsername,
+                            credential: twilioPassword
+                        },
+                        {
+                            urls: 'turn:eu.turn.twilio.com:3478?transport=tcp',
+                            username: twilioUsername,
+                            credential: twilioPassword
+                        },
+                        {
+                            urls: 'turn:asia.turn.twilio.com:3478?transport=udp',
+                            username: twilioUsername,
+                            credential: twilioPassword
+                        },
+                        {
+                            urls: 'turn:asia.turn.twilio.com:3478?transport=tcp',
+                            username: twilioUsername,
+                            credential: twilioPassword
+                        }
+                    );
+                }
+                
+                // Start with original servers, add regionals, but NO public fallbacks
+                const allServers = [...iceServers, ...regionalTurnServers];
                 
                 CONFIG.peerConfig = {
                     iceServers: allServers,
@@ -98,8 +132,8 @@ async function loadIceServers() {
                     iceTransportPolicy: 'all'
                 };
                 CONFIG.iceSource = source.name;
-                console.log(`✓ ICE servers from ${source.name}: ${iceServers.length} servers + public fallbacks`);
-                console.log('📡 TURN servers include public relays for better connectivity');
+                console.log(`✓ ICE servers from ${source.name}: ${iceServers.length} servers + ${regionalTurnServers.length} regional variants`);
+                console.log('📡 Using Twilio TURN with regional endpoints for better geographic routing');
                 return;
             }
         } catch (error) {
@@ -108,38 +142,21 @@ async function loadIceServers() {
         }
     }
     
-    // Fallback: Public STUN servers + public TURN
-    console.log('Using public STUN + TURN fallback');
+    // Fallback: Public STUN servers only (no public TURN - they're unreliable)
+    console.log('Using public STUN fallback only (TURN unavailable)');
     CONFIG.peerConfig = {
         iceServers: [
-            // STUN servers
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' },
             { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' },
-            
-            // Public TURN servers
-            {
-                urls: 'turn:openrelay.metered.ca:80',
-                username: 'openrelayproject',
-                credential: 'openrelayproject'
-            },
-            {
-                urls: 'turn:openrelay.metered.ca:443',
-                username: 'openrelayproject',
-                credential: 'openrelayproject'
-            },
-            {
-                urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-                username: 'openrelayproject',
-                credential: 'openrelayproject'
-            }
+            { urls: 'stun:stun4.l.google.com:19302' }
         ],
         iceCandidatePoolSize: 10
     };
-    CONFIG.iceSource = 'public-stun-turn';
+    CONFIG.iceSource = 'public-stun-only';
 }
+
 
 async function getDirectTwilioServers() {
     // Direct Twilio API call (requires credentials server-side)
