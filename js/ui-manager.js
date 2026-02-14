@@ -283,6 +283,38 @@ const UIManager = {
             DebugConsole?.warning('Admin', 'Admin is offline');
         }
     },
+	
+	
+	// Add this method to ui-manager.js
+forceHangupButtonReset() {
+    console.log('Force resetting hangup button');
+    
+    if (CONFIG.isAdmin) {
+        const adminHangupBtn = document.getElementById('adminHangupBtn');
+        if (adminHangupBtn) {
+            adminHangupBtn.disabled = true;
+            adminHangupBtn.className = 'btn-hangup';
+        }
+        
+        const adminCallBtn = document.getElementById('adminCallBtn');
+        if (adminCallBtn) {
+            adminCallBtn.disabled = false;
+            adminCallBtn.className = 'btn-call active';
+        }
+    } else {
+        const userHangupBtn = document.querySelector('.btn-hangup');
+        if (userHangupBtn) {
+            userHangupBtn.disabled = true;
+            userHangupBtn.className = 'btn-hangup';
+        }
+        
+        const userCallBtn = document.querySelector('.btn-call');
+        if (userCallBtn) {
+            userCallBtn.disabled = false;
+            userCallBtn.className = 'btn-call active';
+        }
+    }
+},
     
     // ===== Display real network metrics =====
     showNetworkMetrics(metrics) {
