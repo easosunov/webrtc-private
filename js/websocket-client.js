@@ -11,6 +11,7 @@ const WebSocketClient = {
     pingTimes: [],
     lastPingTime: null,
     networkQuality: 'good',
+    lastMetricsUpdate: 0,
     
     connect() {
         return new Promise((resolve, reject) => {
@@ -105,9 +106,9 @@ const WebSocketClient = {
     
     // ===== Update network quality based on latency =====
     updateNetworkQualityFromLatency(latency) {
-        // Keep last 5 ping times
+        // Keep last 10 ping times for better accuracy
         this.pingTimes.push(latency);
-        if (this.pingTimes.length > 5) {
+        if (this.pingTimes.length > 10) {
             this.pingTimes.shift();
         }
         
@@ -131,11 +132,49 @@ const WebSocketClient = {
             this.networkQuality = quality;
             console.log(`📊 Network quality: ${quality} (${Math.round(avgLatency)}ms)`);
             DebugConsole?.network('Network', `Quality: ${quality}, Latency: ${Math.round(avgLatency)}ms`);
+        }
+        
+        // Calculate comprehensive metrics
+        const metrics = {
+            latency: Math.round(avgLatency),
+            jitter: this.calculateJitter(),
+            packetLoss: this.reconnectAttempts > 0 ? Math.min(30, this.reconnectAttempts * 5) : 0,
+            bandwidth: this.getBandwidthEstimate(avgLatency),
+            reliability: Math.max(0, Math.min(100, Math.round(100 - (avgLatency / 10) - (this.reconnectAttempts * 2))))
+        };
+        
+        // Update UI with metrics (throttled to avoid flicker)
+        const now = Date.now();
+        if (now - this.lastMetricsUpdate > 2000) { // Update every 2 seconds max
+            this.lastMetricsUpdate = now;
             
-            if (UIManager.showNetworkQuality) {
+            if (UIManager.showNetworkMetrics) {
+                UIManager.showNetworkMetrics(metrics);
+                DebugConsole?.network('Network', `Latency: ${metrics.latency}ms, Jitter: ${metrics.jitter}ms, Loss: ${metrics.packetLoss}%, BW: ${metrics.bandwidth}Mbps`);
+            } else if (UIManager.showNetworkQuality) {
+                // Fallback to old method
                 UIManager.showNetworkQuality(quality);
             }
         }
+    },
+    
+    // Calculate jitter (variation in latency)
+    calculateJitter() {
+        if (this.pingTimes.length < 2) return 0;
+        let sumDiff = 0;
+        for (let i = 1; i < this.pingTimes.length; i++) {
+            sumDiff += Math.abs(this.pingTimes[i] - this.pingTimes[i-1]);
+        }
+        return Math.round(sumDiff / (this.pingTimes.length - 1));
+    },
+    
+    // Bandwidth estimate based on latency
+    getBandwidthEstimate(latency) {
+        if (latency < 50) return 50;  // Fiber
+        if (latency < 100) return 25; // Fast broadband
+        if (latency < 200) return 10; // Standard broadband
+        if (latency < 400) return 5;  // Mobile 4G
+        return 2;                      // Slow connection
     },
     
     disconnect() {
