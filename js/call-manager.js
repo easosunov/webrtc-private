@@ -1,4 +1,4 @@
-// js/call-manager.js - COMPLETE FIXED VERSION WITH DEBUG LOGGING
+// js/call-manager.js - COMPLETE FIXED VERSION WITH DEBUG LOGGING AND IMMEDIATE HANGUP
 const CallManager = {
     // Add audio element for notification sound
     notificationAudio: null,
@@ -21,7 +21,7 @@ const CallManager = {
         DebugConsole?.call('Call', `Calling ${userToCall}`);
         UIManager.showStatus(`Calling ${userToCall}...`);
         
-        // === ADDED: Show connecting status for ALL calls (User AND Admin) ===
+        // ==== Show connecting status and enable hangup button immediately ====
         console.log('=== Showing Connecting status for call ===');
         if (window.showConnectionStatus) {
             window.showConnectionStatus('Connecting...', 'connecting');
@@ -34,6 +34,10 @@ const CallManager = {
         CONFIG.targetUsername = userToCall;
         CONFIG.targetSocketId = socketToCall;
         CONFIG.isInitiator = true;
+        CONFIG.isCallActive = true; // Track that call is in progress
+        
+        // ==== CRITICAL: Enable hangup button IMMEDIATELY ====
+        this.enableHangupButton(true);
         
         // Update UI buttons
         UIManager.updateCallButtons();
@@ -43,6 +47,8 @@ const CallManager = {
         if (!hasPerms) {
             UIManager.showError('Need camera/mic permissions to call');
             DebugConsole?.error('Call', 'Camera/mic permissions denied');
+            this.enableHangupButton(false);
+            CONFIG.isCallActive = false;
             return;
         }
         
@@ -61,6 +67,26 @@ const CallManager = {
         DebugConsole?.info('Call', 'Waiting for answer');
     },
     
+    // Helper to enable/disable hangup button directly
+    enableHangupButton(enable) {
+        console.log(`Setting hangup button enabled: ${enable}`);
+        DebugConsole?.info('Call', `Hangup button ${enable ? 'enabled' : 'disabled'}`);
+        
+        if (CONFIG.isAdmin) {
+            const adminHangupBtn = document.getElementById('adminHangupBtn');
+            if (adminHangupBtn) {
+                adminHangupBtn.disabled = !enable;
+                adminHangupBtn.className = enable ? 'btn-hangup active' : 'btn-hangup';
+            }
+        } else {
+            const userHangupBtn = document.querySelector('.btn-hangup');
+            if (userHangupBtn) {
+                userHangupBtn.disabled = !enable;
+                userHangupBtn.className = enable ? 'btn-hangup active' : 'btn-hangup';
+            }
+        }
+    },
+    
     // Alias for callUser to maintain compatibility
     callAdmin() {
         if (!CONFIG.adminSocketId) {
@@ -69,6 +95,10 @@ const CallManager = {
             return;
         }
         DebugConsole?.call('Call', 'Calling admin');
+        
+        // Enable hangup button immediately
+        this.enableHangupButton(true);
+        
         this.callUser('Administrator', CONFIG.adminSocketId);
     },
     
@@ -435,6 +465,7 @@ const CallManager = {
         
         // ===== FORCE ADMIN UI UPDATE =====
         CONFIG.isInCall = false;
+        CONFIG.isCallActive = false;
         
         if (CONFIG.isAdmin) {
             const adminHangupBtn = document.getElementById('adminHangupBtn');
@@ -482,6 +513,24 @@ const CallManager = {
         console.log('Ending call');
         UIManager.showStatus('Ending call...');
         
+        // If we haven't even connected yet, just clean up
+        if (!CONFIG.peerConnection || CONFIG.peerConnection.connectionState === 'new' || CONFIG.peerConnection.connectionState === 'connecting') {
+            console.log('Call cancelled before connection established');
+            DebugConsole?.info('Call', 'Call cancelled before connection');
+            
+            // Send cancel message to server if needed
+            if (CONFIG.targetSocketId) {
+                WebSocketClient.sendToServer({
+                    type: 'call-cancel',
+                    targetSocketId: CONFIG.targetSocketId
+                });
+            }
+            
+            this.cleanupCall();
+            return;
+        }
+        
+        // Normal hangup for connected call
         if (CONFIG.targetSocketId) {
             WebSocketClient.sendToServer({
                 type: 'call-end',
@@ -500,7 +549,8 @@ const CallManager = {
         this.stopNotificationSound();
         
         CONFIG.isProcessingAnswer = false;
-        CONFIG.isInCall = false;  // ← Explicitly set this
+        CONFIG.isInCall = false;
+        CONFIG.isCallActive = false;
         
         if (CONFIG.peerConnection) {
             CONFIG.peerConnection.close();
@@ -522,32 +572,8 @@ const CallManager = {
         const notification = document.getElementById('incoming-call-notification');
         if (notification) notification.remove();
         
-        // ===== FORCE UI UPDATE FOR HANGUP BUTTON =====
-        if (CONFIG.isAdmin) {
-            const adminHangupBtn = document.getElementById('adminHangupBtn');
-            if (adminHangupBtn) {
-                adminHangupBtn.disabled = true;
-                adminHangupBtn.className = 'btn-hangup';
-            }
-            
-            const adminCallBtn = document.getElementById('adminCallBtn');
-            if (adminCallBtn) {
-                adminCallBtn.disabled = false;
-                adminCallBtn.className = 'btn-call active';
-            }
-        } else {
-            const userHangupBtn = document.querySelector('.btn-hangup');
-            if (userHangupBtn) {
-                userHangupBtn.disabled = true;
-                userHangupBtn.className = 'btn-hangup';
-            }
-            
-            const userCallBtn = document.querySelector('.btn-call');
-            if (userCallBtn) {
-                userCallBtn.disabled = false;
-                userCallBtn.className = 'btn-call active';
-            }
-        }
+        // ===== FORCE HANGUP BUTTON DISABLED =====
+        this.enableHangupButton(false);
         
         UIManager.showStatus('Ready');
         UIManager.updateCallButtons();
