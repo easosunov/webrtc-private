@@ -1,4 +1,4 @@
-// js/webrtc-core.js - COMPLETE WITH TRICKLE ICE AND ICE RESTART
+// js/webrtc-core.js - COMPLETE WITH TRICKLE ICE, ICE RESTART, AND FAILURE DIAGNOSTICS
 const WebRTCManager = {
     // Camera properties
     hasMultipleCameras: false,
@@ -9,6 +9,16 @@ const WebRTCManager = {
     createPeerConnection() {
         console.log('🔗 Creating peer connection with Trickle ICE...');
         DebugConsole?.info('WebRTC', 'Creating peer connection');
+        
+        // Initialize failure tracking
+        CONFIG.iceFailureReasons = [];
+        CONFIG.iceCandidateGathering = {
+            startTime: Date.now(),
+            hostCandidates: 0,
+            srflxCandidates: 0,
+            relayCandidates: 0,
+            failedServers: []
+        };
         
         const config = {
             iceServers: CONFIG.peerConfig?.iceServers || [
@@ -88,13 +98,24 @@ const WebRTCManager = {
         // ===== TRICKLE ICE: Send candidates as soon as they're generated =====
         CONFIG.peerConnection.onicecandidate = (event) => {
             if (event.candidate && CONFIG.targetSocketId) {
-                // Log candidate type for debugging
-                const candidateType = event.candidate.candidate.includes('srflx') ? 'server-reflexive' :
-                                     event.candidate.candidate.includes('relay') ? 'relay' :
-                                     event.candidate.candidate.includes('host') ? 'host' : 'unknown';
+                const candidateStr = event.candidate.candidate;
+                const candidateType = candidateStr.includes('srflx') ? 'server-reflexive' :
+                                     candidateStr.includes('relay') ? 'relay' :
+                                     candidateStr.includes('host') ? 'host' : 'unknown';
                 
-                console.log(`🧊 Sending ${candidateType} ICE candidate (${event.candidate.protocol || 'udp'})`);
-                DebugConsole?.network('WebRTC', `Sending ${candidateType} candidate`);
+                // Track candidate types for failure analysis
+                if (candidateType === 'host') CONFIG.iceCandidateGathering.hostCandidates++;
+                if (candidateType === 'server-reflexive') CONFIG.iceCandidateGathering.srflxCandidates++;
+                if (candidateType === 'relay') CONFIG.iceCandidateGathering.relayCandidates++;
+                
+                console.log(`🧊 ${candidateType} candidate:`, {
+                    protocol: event.candidate.protocol || 'udp',
+                    address: event.candidate.address,
+                    port: event.candidate.port,
+                    priority: event.candidate.priority
+                });
+                
+                DebugConsole?.network('ICE', `${candidateType} candidate generated`);
                 
                 WebSocketClient.sendToServer({
                     type: 'ice-candidate',
@@ -104,7 +125,7 @@ const WebRTCManager = {
             }
         };
         
-        // ===== ENHANCED ICE CONNECTION STATE MONITORING =====
+        // ===== ENHANCED ICE CONNECTION STATE MONITORING WITH FAILURE ANALYSIS =====
         CONFIG.peerConnection.oniceconnectionstatechange = () => {
             const state = CONFIG.peerConnection.iceConnectionState;
             console.log('🧊 ICE connection state:', state);
@@ -113,14 +134,16 @@ const WebRTCManager = {
             if (state === 'checking') {
                 CONFIG.iceStartTime = Date.now();
                 console.log('⏳ ICE checking started...');
+                
+                // Test TURN servers in background
+                setTimeout(() => this.testTurnServers(), 100);
             }
             
             if (state === 'connected' || state === 'completed') {
                 const connectTime = Date.now() - (CONFIG.iceStartTime || Date.now());
                 console.log(`✅ ICE connected in ${connectTime}ms`);
-                DebugConsole?.success('WebRTC', `ICE connected in ${connectTime}ms`);
                 
-                // Log which candidate type succeeded using getStats
+                // Log which candidate type succeeded
                 CONFIG.peerConnection.getStats().then(stats => {
                     stats.forEach(report => {
                         if (report.type === 'candidate-pair' && report.state === 'succeeded') {
@@ -139,14 +162,36 @@ const WebRTCManager = {
             }
             
             if (state === 'failed') {
-                console.error('❌ ICE failed - attempting restart in 2s');
-                DebugConsole?.error('WebRTC', 'ICE failed, restarting...');
-                UIManager.showStatus('Connection lost, reconnecting...');
+                const failTime = Date.now() - (CONFIG.iceStartTime || Date.now());
+                console.error(`❌ ICE failed after ${failTime}ms`);
+                DebugConsole?.error('ICE', `ICE failed after ${failTime}ms`);
+                
+                // Analyze why it failed
+                this.analyzeIceFailure();
+                
+                // Log candidate statistics
+                console.log('📊 Candidate stats:', CONFIG.iceCandidateGathering);
+                
+                if (CONFIG.iceCandidateGathering.relayCandidates === 0) {
+                    console.error('❌ No relay candidates - TURN servers may be unreachable');
+                    DebugConsole?.error('ICE', 'No relay candidates - TURN servers unreachable');
+                    CONFIG.iceFailureReasons.push('No relay candidates - TURN unreachable');
+                }
+                
+                if (CONFIG.iceCandidateGathering.srflxCandidates === 0) {
+                    console.error('❌ No server reflexive candidates - STUN may be blocked');
+                    DebugConsole?.error('ICE', 'No server reflexive candidates - STUN blocked');
+                    CONFIG.iceFailureReasons.push('No STUN candidates - STUN blocked');
+                }
+                
+                if (CONFIG.iceCandidateGathering.hostCandidates === 0) {
+                    console.error('❌ No host candidates - network interface issue');
+                    DebugConsole?.error('ICE', 'No host candidates - network issue');
+                    CONFIG.iceFailureReasons.push('No host candidates - network down');
+                }
                 
                 // Attempt ICE restart
-                setTimeout(() => {
-                    this.restartIce();
-                }, 2000);
+                setTimeout(() => this.restartIce(), 2000);
             }
             
             if (state === 'disconnected') {
@@ -223,7 +268,7 @@ const WebRTCManager = {
                                 UIManager.showStatus('Call disconnected');
                             }
                         }
-                    }, 5000); // Longer timeout to allow ICE restart
+                    }, 5000);
                     break;
                     
                 case 'closed':
@@ -335,6 +380,69 @@ const WebRTCManager = {
             }
             
             return false;
+        }
+    },
+    
+    // ===== TURN SERVER CONNECTIVITY TEST =====
+    async testTurnServers() {
+        console.log('🔍 Testing TURN server connectivity...');
+        
+        const servers = CONFIG.peerConfig?.iceServers || [];
+        const turnServers = servers.filter(s => s.urls?.includes('turn:'));
+        
+        if (turnServers.length === 0) {
+            console.log('⚠️ No TURN servers configured');
+            return;
+        }
+        
+        for (const server of turnServers) {
+            const testPC = new RTCPeerConnection({ iceServers: [server] });
+            testPC.createDataChannel('test');
+            
+            let relayFound = false;
+            let testTimeout = setTimeout(() => {
+                if (!relayFound) {
+                    console.error(`❌ TURN server unreachable: ${server.urls}`);
+                    CONFIG.iceFailureReasons.push(`TURN timeout: ${server.urls}`);
+                    DebugConsole?.error('ICE', `TURN timeout: ${server.urls}`);
+                }
+                testPC.close();
+            }, 3000);
+            
+            testPC.onicecandidate = (e) => {
+                if (e.candidate && e.candidate.candidate.includes('relay')) {
+                    relayFound = true;
+                    console.log(`✅ TURN server working: ${server.urls}`);
+                    clearTimeout(testTimeout);
+                    testPC.close();
+                }
+            };
+            
+            await testPC.createOffer();
+            await testPC.setLocalDescription(testPC.localDescription);
+        }
+    },
+    
+    // ===== ICE FAILURE ANALYSIS =====
+    analyzeIceFailure() {
+        console.log('🔍 Analyzing ICE failure...');
+        
+        // Check browser compatibility
+        if (!RTCPeerConnection) {
+            console.error('❌ WebRTC not supported in this browser');
+            CONFIG.iceFailureReasons.push('WebRTC not supported');
+        }
+        
+        // Check if we have any ICE servers configured
+        if (!CONFIG.peerConfig?.iceServers || CONFIG.peerConfig.iceServers.length === 0) {
+            console.error('❌ No ICE servers configured');
+            CONFIG.iceFailureReasons.push('No ICE servers');
+        }
+        
+        // Log all collected reasons
+        if (CONFIG.iceFailureReasons.length > 0) {
+            console.log('📋 Failure reasons:', CONFIG.iceFailureReasons);
+            DebugConsole?.error('ICE', `Failure: ${CONFIG.iceFailureReasons.join(', ')}`);
         }
     },
     
@@ -508,8 +616,8 @@ const WebRTCManager = {
     },
     
     // ========== CAMERA DETECTION AND SWITCHING ==========
-    // (Your existing camera code remains unchanged)
-    // ... (keep all your camera methods from your current file)
+    // (Keep all your existing camera methods here - they remain unchanged)
+    // ... your camera detection and switching code ...
     
     checkAudioState() {
         console.log('🔍 AUDIO STATE CHECK:');
