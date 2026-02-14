@@ -164,6 +164,67 @@ const ResolutionManager = {
         // The new track will automatically be transmitted to the remote peer
     },
     
+	
+	// Helper to determine if new resolution is higher
+isHigherResolution(newKey, oldKey) {
+    const resolutionOrder = ['audio-only', 'low', 'medium', 'high', 'hd', 'full-hd'];
+    const newIndex = resolutionOrder.indexOf(newKey);
+    const oldIndex = resolutionOrder.indexOf(oldKey);
+    
+    if (newIndex === -1 || oldIndex === -1) {
+        console.warn('Unknown resolution keys:', newKey, oldKey);
+        return false;
+    }
+    return newIndex > oldIndex;
+},
+
+// Renegotiate for higher resolution
+async renegotiateForHigherResolution(newStream, newResolutionKey) {
+    console.log('Renegotiating for higher resolution');
+    DebugConsole?.info('Resolution', 'Renegotiating for higher resolution');
+    
+    if (!CONFIG.peerConnection || !CONFIG.isInCall) {
+        console.log('Not in call, skipping renegotiation');
+        return;
+    }
+    
+    try {
+        // First replace the tracks
+        await this.replacePeerConnectionTracks(newStream);
+        
+        // For higher resolutions, trigger renegotiation
+        if (CONFIG.isInitiator) {
+            console.log('Creating new offer for higher resolution');
+            UIManager.showStatus('Adjusting video quality...');
+            
+            // Create and send new offer
+            const offer = await CONFIG.peerConnection.createOffer();
+            await CONFIG.peerConnection.setLocalDescription(offer);
+            
+            WebSocketClient.sendToServer({
+                type: 'offer',
+                targetSocketId: CONFIG.targetSocketId,
+                offer: offer,
+                sender: CONFIG.myUsername
+            });
+            
+            console.log('✅ New offer sent for higher resolution');
+            DebugConsole?.success('Resolution', 'Renegotiation offer sent');
+            UIManager.showStatus(`Quality: ${RESOLUTION_CONFIG.options[newResolutionKey]?.label || newResolutionKey}`);
+        } else {
+            console.log('Waiting for initiator to renegotiate');
+            UIManager.showStatus('Peer adjusting quality...');
+        }
+        
+    } catch (error) {
+        console.error('Renegotiation failed:', error);
+        DebugConsole?.error('Resolution', `Renegotiation failed: ${error.message}`);
+        UIManager.showError('Failed to increase resolution');
+        throw error;
+    }
+},
+	
+	
     // Get current resolution info
     getCurrentResolutionInfo() {
         const current = RESOLUTION_CONFIG.current;
