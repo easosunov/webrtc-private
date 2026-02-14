@@ -500,6 +500,34 @@ const CallManager = {
         UIManager.showStatus('Call ended by ' + (data.endedByName || 'remote user'));
     },
     
+	
+	// Add this method to call-manager.js
+handleUnexpectedDisconnect() {
+    console.log('⚠️ Unexpected call disconnection');
+    DebugConsole?.warning('Call', 'Call ended unexpectedly');
+    
+    CONFIG.isInCall = false;
+    CONFIG.isCallActive = false;
+    
+    // Force UI update
+    if (CONFIG.isAdmin) {
+        const adminHangupBtn = document.getElementById('adminHangupBtn');
+        if (adminHangupBtn) {
+            adminHangupBtn.disabled = true;
+            adminHangupBtn.className = 'btn-hangup';
+        }
+    } else {
+        const userHangupBtn = document.querySelector('.btn-hangup');
+        if (userHangupBtn) {
+            userHangupBtn.disabled = true;
+            userHangupBtn.className = 'btn-hangup';
+        }
+    }
+    
+    this.cleanupCall();
+    UIManager.showStatus('Call disconnected');
+},
+	
     hangup() {
         console.log('=== CallManager.hangup() - stopping monitoring ===');
         DebugConsole?.call('Call', 'Ending call');
