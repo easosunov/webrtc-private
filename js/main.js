@@ -445,6 +445,33 @@ function setupGlobalFunctions() {
     console.log('Environment:', CONFIG.environment);
 })();
 
+// ========== CONNECTION DIAGNOSTIC COMMAND ==========
+window.diagnoseConnection = async function() {
+    console.log('🔍 Running WebRTC diagnostic...');
+    
+    const diagnosis = {
+        browser: navigator.userAgent,
+        webrtcSupported: !!window.RTCPeerConnection,
+        iceServers: CONFIG.peerConfig?.iceServers?.length || 0,
+        iceCandidateStats: CONFIG.iceCandidateGathering || {},
+        failureReasons: CONFIG.iceFailureReasons || [],
+        networkType: navigator.connection?.type || 'unknown',
+        downlink: navigator.connection?.downlink || 'unknown',
+        rtt: navigator.connection?.rtt || 'unknown'
+    };
+    
+    console.log('📊 Connection Diagnosis:');
+    console.table(diagnosis);
+    
+    // Test TURN servers explicitly
+    if (window.WebRTCManager && WebRTCManager.testTurnServers) {
+        await WebRTCManager.testTurnServers();
+    }
+    
+    return diagnosis;
+};
+
+
 // Export for testing (if needed)
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
