@@ -1,8 +1,11 @@
-// js/call-manager.js - COMPLETE FIXED VERSION WITH DEBUG LOGGING AND IMMEDIATE HANGUP
+// js/call-manager.js - COMPLETE FIXED VERSION WITH IMMEDIATE HANGUP
 const CallManager = {
     // Add audio element for notification sound
     notificationAudio: null,
     notificationInterval: null,
+    
+    // Add this property
+    manualHangupControl: false,
     
     async callUser(userToCall, socketToCall) {
         if (CONFIG.isInCall || CONFIG.isProcessingAnswer) {
@@ -39,8 +42,7 @@ const CallManager = {
         // ==== CRITICAL: Enable hangup button IMMEDIATELY ====
         this.enableHangupButton(true);
         
-        // Update UI buttons
-        UIManager.updateCallButtons();
+        // REMOVED: UIManager.updateCallButtons(); - This was overriding our manual control
         
         // Ensure permissions
         const hasPerms = await AuthManager.ensureMediaPermissions();
@@ -71,6 +73,8 @@ const CallManager = {
     enableHangupButton(enable) {
         console.log(`Setting hangup button enabled: ${enable}`);
         DebugConsole?.info('Call', `Hangup button ${enable ? 'enabled' : 'disabled'}`);
+        
+        CONFIG.manualHangupControl = enable; // Set the flag
         
         if (CONFIG.isAdmin) {
             const adminHangupBtn = document.getElementById('adminHangupBtn');
@@ -551,6 +555,7 @@ const CallManager = {
         CONFIG.isProcessingAnswer = false;
         CONFIG.isInCall = false;
         CONFIG.isCallActive = false;
+        CONFIG.manualHangupControl = false; // Reset the flag
         
         if (CONFIG.peerConnection) {
             CONFIG.peerConnection.close();
