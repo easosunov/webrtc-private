@@ -109,37 +109,39 @@ const UIManager = {
         this.updateCallButtons();
     },
     
-    updateCallButtons() {
-        // For user view (regular users calling admin)
-        if (!CONFIG.isAdmin) {
-            const callBtn = document.querySelector('.btn-call');
-            const hangupBtn = document.querySelector('.btn-hangup');
+	
+	updateCallButtons() {
+    // For user view (regular users calling admin)
+    if (!CONFIG.isAdmin) {
+        const callBtn = document.querySelector('.btn-call');
+        const hangupBtn = document.querySelector('.btn-hangup');
+        
+        if (callBtn) {
+            const adminAvailable = CONFIG.adminSocketId && !CONFIG.isInCall && !CONFIG.isProcessingAnswer;
+            callBtn.disabled = !adminAvailable;
+            callBtn.className = adminAvailable ? 'btn-call active' : 'btn-call';
             
-            if (callBtn) {
-                const adminAvailable = CONFIG.adminSocketId && !CONFIG.isInCall && !CONFIG.isProcessingAnswer;
-                callBtn.disabled = !adminAvailable;
-                callBtn.className = adminAvailable ? 'btn-call active' : 'btn-call';
-                
-                // Update button text based on admin availability
-                if (!adminAvailable) {
-                    callBtn.title = 'Admin is offline';
-                } else {
-                    callBtn.title = 'Call Administrator';
-                }
-            }
-            
-            if (hangupBtn) {
-                hangupBtn.disabled = !CONFIG.isInCall;
-                hangupBtn.className = CONFIG.isInCall ? 'btn-hangup active' : 'btn-hangup';
+            // Update button text based on admin availability
+            if (!adminAvailable) {
+                callBtn.title = 'Admin is offline';
+            } else {
+                callBtn.title = 'Call Administrator';
             }
         }
         
-        // For admin view - update admin buttons
-        if (CONFIG.isAdmin && typeof window.updateAdminButtonStates === 'function') {
-            window.updateAdminButtonStates();
+        // ===== FIX: Only auto-update hangup if not manually controlled =====
+        if (hangupBtn && !CONFIG.manualHangupControl) {
+            hangupBtn.disabled = !CONFIG.isInCall;
+            hangupBtn.className = CONFIG.isInCall ? 'btn-hangup active' : 'btn-hangup';
         }
-    },
+    }
     
+    // For admin view - update admin buttons
+    if (CONFIG.isAdmin && typeof window.updateAdminButtonStates === 'function') {
+        window.updateAdminButtonStates();
+    }
+}
+	
     showLoginScreen() {
         DebugConsole?.info('UI', 'Showing login screen');
         if (CONFIG.elements.loginDiv) {
