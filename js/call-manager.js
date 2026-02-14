@@ -1,4 +1,4 @@
-// js/call-manager.js - MINIMAL FIX VERSION
+// js/call-manager.js - COMPLETE FIXED VERSION WITH DEBUG LOGGING
 const CallManager = {
     // Add audio element for notification sound
     notificationAudio: null,
@@ -7,15 +7,18 @@ const CallManager = {
     async callUser(userToCall, socketToCall) {
         if (CONFIG.isInCall || CONFIG.isProcessingAnswer) {
             UIManager.showError('Already in a call');
+            DebugConsole?.warning('Call', 'Already in a call');
             return;
         }
         
         if (!socketToCall) {
             UIManager.showError('User not available');
+            DebugConsole?.error('Call', 'User not available');
             return;
         }
         
         console.log(`Calling ${userToCall} (${socketToCall})...`);
+        DebugConsole?.call('Call', `Calling ${userToCall}`);
         UIManager.showStatus(`Calling ${userToCall}...`);
         
         // === ADDED: Show connecting status for ALL calls (User AND Admin) ===
@@ -39,6 +42,7 @@ const CallManager = {
         const hasPerms = await AuthManager.ensureMediaPermissions();
         if (!hasPerms) {
             UIManager.showError('Need camera/mic permissions to call');
+            DebugConsole?.error('Call', 'Camera/mic permissions denied');
             return;
         }
         
@@ -54,13 +58,27 @@ const CallManager = {
         });
         
         console.log('Waiting for user to accept call...');
+        DebugConsole?.info('Call', 'Waiting for answer');
+    },
+    
+    // Alias for callUser to maintain compatibility
+    callAdmin() {
+        if (!CONFIG.adminSocketId) {
+            UIManager.showError('Admin is not available');
+            DebugConsole?.error('Call', 'Admin not available');
+            return;
+        }
+        DebugConsole?.call('Call', 'Calling admin');
+        this.callUser('Administrator', CONFIG.adminSocketId);
     },
     
     handleCallInitiated(data) {
         console.log(`📞 Incoming call from ${data.callerName}`);
+        DebugConsole?.call('Call', `Incoming call from ${data.callerName}`);
         
         if (CONFIG.isInCall || CONFIG.isProcessingAnswer) {
             console.log('Already in call, ignoring');
+            DebugConsole?.warning('Call', 'Already in call - ignoring incoming');
             return;
         }
         
@@ -98,6 +116,8 @@ const CallManager = {
     },
     
     showIncomingCallNotification(callerDisplayName) {
+        DebugConsole?.call('Call', `Showing incoming call notification from ${callerDisplayName}`);
+        
         // Remove any existing notification
         const existing = document.getElementById('incoming-call-notification');
         if (existing) existing.remove();
@@ -134,12 +154,14 @@ const CallManager = {
         
         // Add handlers
         document.getElementById('accept-btn').onclick = () => {
+            DebugConsole?.call('Call', 'User accepted incoming call');
             this.stopNotificationSound();
             notification.remove();
             this.answerCall();
         };
         
         document.getElementById('reject-btn').onclick = () => {
+            DebugConsole?.call('Call', 'User rejected incoming call');
             this.stopNotificationSound();
             notification.remove();
             this.rejectCall();
@@ -148,6 +170,7 @@ const CallManager = {
         // Auto-remove after 30 seconds
         setTimeout(() => {
             if (document.body.contains(notification)) {
+                DebugConsole?.warning('Call', 'Incoming call timed out');
                 this.stopNotificationSound();
                 notification.remove();
                 this.rejectCall();
@@ -157,6 +180,8 @@ const CallManager = {
     
     // === NEW: Start notification sound ===
     startNotificationSound() {
+        DebugConsole?.info('Call', 'Starting notification sound');
+        
         // Create audio element if it doesn't exist
         if (!this.notificationAudio) {
             this.notificationAudio = new Audio();
@@ -200,6 +225,7 @@ const CallManager = {
                 
             } catch (error) {
                 console.log('Web Audio API not available, using fallback sound:', error);
+                DebugConsole?.warning('Call', 'Web Audio API not available, using fallback');
                 
                 // Fallback: Base64 encoded simple bell sound
                 const bellSound = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZ3620YQQAAAAAAA==";
@@ -213,6 +239,7 @@ const CallManager = {
         // Play the sound
         this.notificationAudio.play().catch(e => {
             console.log('Notification sound play failed, using beep fallback:', e);
+            DebugConsole?.warning('Call', 'Notification sound failed, using beep fallback');
             this.startBeepFallback();
         });
         
@@ -254,6 +281,7 @@ const CallManager = {
             
         } catch (error) {
             console.log('Beep fallback also failed:', error);
+            DebugConsole?.error('Call', 'Beep fallback failed');
         }
     },
     
@@ -277,6 +305,7 @@ const CallManager = {
         
         CONFIG.isProcessingAnswer = true;
         console.log('Answering call from:', CONFIG.incomingCallFrom);
+        DebugConsole?.call('Call', `Answering call from ${CONFIG.incomingCallFrom}`);
         UIManager.showStatus('Answering call...');
         UIManager.updateCallButtons();
         
@@ -293,6 +322,7 @@ const CallManager = {
         const hasPerms = await AuthManager.ensureMediaPermissions();
         if (!hasPerms) {
             UIManager.showError('Need camera/mic permissions to answer');
+            DebugConsole?.error('Call', 'Camera/mic permissions denied');
             CONFIG.isProcessingAnswer = false;
             UIManager.updateCallButtons();
             return;
@@ -314,6 +344,7 @@ const CallManager = {
     
     rejectCall() {
         console.log('=== CallManager.rejectCall() - stopping monitoring ===');
+        DebugConsole?.call('Call', 'Rejecting call');
         
         // Clean up status monitoring
         if (typeof stopMonitoring !== 'undefined') {
@@ -348,6 +379,7 @@ const CallManager = {
     
     handleCallAccepted(data) {
         console.log('✅ Call accepted by:', data.calleeName);
+        DebugConsole?.success('Call', `Call accepted by ${data.calleeName}`);
         UIManager.showStatus('Call accepted - connecting...');
         
         // FIX: Set isInCall to true when call is accepted
@@ -357,6 +389,7 @@ const CallManager = {
         if (CONFIG.isInitiator) {
             // We are the caller, now we can send the offer
             console.log('We are the caller, sending offer now...');
+            DebugConsole?.network('WebRTC', 'Sending ICE offer to server');
             setTimeout(() => {
                 if (CONFIG.peerConnection && CONFIG.targetSocketId) {
                     WebRTCManager.createAndSendOffer();
@@ -365,11 +398,13 @@ const CallManager = {
         } else {
             // We are the callee, we'll handle the offer when it arrives
             console.log('We are the callee, waiting for offer...');
+            DebugConsole?.network('WebRTC', 'Waiting for ICE offer');
         }
     },
     
     handleCallRejected(data) {
         console.log('=== CallManager.handleCallRejected() - stopping monitoring ===');
+        DebugConsole?.warning('Call', `Call rejected by ${data.rejecterName || 'remote user'}`);
         
         // Clean up status monitoring
         if (typeof stopMonitoring !== 'undefined') {
@@ -386,6 +421,7 @@ const CallManager = {
     
     handleCallEnded(data) {
         console.log('=== CallManager.handleCallEnded() - stopping monitoring ===');
+        DebugConsole?.call('Call', `Call ended by ${data.endedByName || 'remote user'}`);
         
         // Clean up status monitoring
         if (typeof stopMonitoring !== 'undefined') {
@@ -396,12 +432,44 @@ const CallManager = {
         }
         
         console.log('Call ended by remote:', data.endedByName || 'remote user');
+        
+        // ===== FORCE ADMIN UI UPDATE =====
+        CONFIG.isInCall = false;
+        
+        if (CONFIG.isAdmin) {
+            const adminHangupBtn = document.getElementById('adminHangupBtn');
+            if (adminHangupBtn) {
+                adminHangupBtn.disabled = true;
+                adminHangupBtn.className = 'btn-hangup';
+                console.log('Admin hangup button disabled');
+            }
+            
+            const adminCallBtn = document.getElementById('adminCallBtn');
+            if (adminCallBtn) {
+                adminCallBtn.disabled = false;
+                adminCallBtn.className = 'btn-call active';
+            }
+        } else {
+            const userHangupBtn = document.querySelector('.btn-hangup');
+            if (userHangupBtn) {
+                userHangupBtn.disabled = true;
+                userHangupBtn.className = 'btn-hangup';
+            }
+            
+            const userCallBtn = document.querySelector('.btn-call');
+            if (userCallBtn) {
+                userCallBtn.disabled = false;
+                userCallBtn.className = 'btn-call active';
+            }
+        }
+        
         this.cleanupCall();
         UIManager.showStatus('Call ended by ' + (data.endedByName || 'remote user'));
     },
     
     hangup() {
         console.log('=== CallManager.hangup() - stopping monitoring ===');
+        DebugConsole?.call('Call', 'Ending call');
         
         // Clean up status monitoring
         if (typeof stopMonitoring !== 'undefined') {
@@ -426,11 +494,13 @@ const CallManager = {
     
     cleanupCall() {
         console.log('Cleaning up call...');
+        DebugConsole?.info('Call', 'Cleaning up call resources');
         
         // Stop any notification sound
         this.stopNotificationSound();
         
         CONFIG.isProcessingAnswer = false;
+        CONFIG.isInCall = false;  // ← Explicitly set this
         
         if (CONFIG.peerConnection) {
             CONFIG.peerConnection.close();
@@ -444,7 +514,6 @@ const CallManager = {
         
         CONFIG.targetSocketId = null;
         CONFIG.targetUsername = null;
-        CONFIG.isInCall = false;
         CONFIG.isInitiator = false;
         CONFIG.incomingCallFrom = null;
         CONFIG.iceCandidatesQueue = [];
@@ -453,8 +522,36 @@ const CallManager = {
         const notification = document.getElementById('incoming-call-notification');
         if (notification) notification.remove();
         
+        // ===== FORCE UI UPDATE FOR HANGUP BUTTON =====
+        if (CONFIG.isAdmin) {
+            const adminHangupBtn = document.getElementById('adminHangupBtn');
+            if (adminHangupBtn) {
+                adminHangupBtn.disabled = true;
+                adminHangupBtn.className = 'btn-hangup';
+            }
+            
+            const adminCallBtn = document.getElementById('adminCallBtn');
+            if (adminCallBtn) {
+                adminCallBtn.disabled = false;
+                adminCallBtn.className = 'btn-call active';
+            }
+        } else {
+            const userHangupBtn = document.querySelector('.btn-hangup');
+            if (userHangupBtn) {
+                userHangupBtn.disabled = true;
+                userHangupBtn.className = 'btn-hangup';
+            }
+            
+            const userCallBtn = document.querySelector('.btn-call');
+            if (userCallBtn) {
+                userCallBtn.disabled = false;
+                userCallBtn.className = 'btn-call active';
+            }
+        }
+        
         UIManager.showStatus('Ready');
         UIManager.updateCallButtons();
+        DebugConsole?.info('Call', 'Call cleanup complete');
     }
 };
 
