@@ -296,30 +296,32 @@ const WebRTCManager = {
                 CONFIG.remoteStream.addTrack(event.track);
                 DebugConsole?.info('WebRTC', `Added ${event.track.kind} to remote stream`);
                 
-                if (CONFIG.elements.remoteVideo) {
-                    CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
-                    CONFIG.elements.remoteVideo.muted = false;
-                    
-                    CONFIG.elements.remoteVideo.play()
-                        .then(() => {
-                            console.log(`▶️ Remote ${event.track.kind} playing`);
-                            DebugConsole?.success('WebRTC', `Remote ${event.track.kind} playing`);
-                            
-                            if (event.track.kind === 'audio') {
-                                console.log('🔊 AUDIO TRACK CONNECTED!');
-                                DebugConsole?.success('WebRTC', 'Audio track connected');
-                                setTimeout(() => {
-                                    const audioTracks = CONFIG.remoteStream.getAudioTracks();
-                                    console.log(`Remote audio tracks: ${audioTracks.length}`);
-                                    DebugConsole?.info('WebRTC', `Remote audio tracks: ${audioTracks.length}`);
-                                }, 100);
-                            }
-                        })
-                        .catch(error => {
-                            console.log(`Play failed for ${event.track.kind}:`, error);
-                            DebugConsole?.warning('WebRTC', `Play failed for ${event.track.kind}: ${error.message}`);
-                        });
+// In ontrack handler, around line 280
+if (CONFIG.elements.remoteVideo) {
+    CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
+    CONFIG.elements.remoteVideo.muted = false;
+    
+    // Only call play if video is not already playing
+    if (CONFIG.elements.remoteVideo.paused) {
+        CONFIG.elements.remoteVideo.play()
+            .then(() => {
+                console.log(`▶️ Remote ${event.track.kind} playing`);
+                DebugConsole?.success('WebRTC', `Remote ${event.track.kind} playing`);
+                
+                if (event.track.kind === 'audio') {
+                    console.log('🔊 AUDIO TRACK CONNECTED!');
+                    DebugConsole?.success('WebRTC', 'Audio track connected');
                 }
+            })
+            .catch(error => {
+                // Only log if it's not the interruption error
+                if (error.name !== 'AbortError' && error.message && !error.message.includes('interrupted')) {
+                    console.log(`Play failed for ${event.track.kind}:`, error);
+                    DebugConsole?.warning('WebRTC', `Play failed for ${event.track.kind}: ${error.message}`);
+                }
+            });
+    }
+}
             }
         };
         
@@ -327,6 +329,10 @@ const WebRTCManager = {
         DebugConsole?.success('WebRTC', 'Peer connection created successfully');
     },
     
+	
+	
+	
+	
     // ===== ICE RESTART METHOD =====
     async restartIce() {
         if (!CONFIG.peerConnection) {
