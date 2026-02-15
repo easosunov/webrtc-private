@@ -45,10 +45,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 function configureFirestore() {
     // Firebase configuration - REPLACE WITH YOUR ACTUAL CONFIG
     const firebaseConfig = {
-        apiKey: "YOUR_API_KEY", // Get from Firebase console
-        authDomain: "relay-725ff.firebaseapp.com",
-        projectId: "relay-725ff",
-        storageBucket: "relay-725ff.appspot.com",
+        apiKey: "AIzaSyD9US_D9RfsoKu9K_lVRak7c_0Ht9k-5Ak", // Get from Firebase console
+        authDomain: "relay.firebaseapp.com",
+        projectId: "relay",
+        storageBucket: "relay.appspot.com",
         messagingSenderId: "YOUR_SENDER_ID",
         appId: "YOUR_APP_ID"
     };
