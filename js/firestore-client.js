@@ -1,4 +1,6 @@
 // js/firestore-client.js - COMPLETE WITH FIRESTORE RELAY
+console.log('🔥🔥🔥 firestore-client.js STARTED EXECUTION 🔥🔥🔥');
+console.log('Line 1 executed');
 const FirestoreClient = {
     // Firebase/Firestore properties
     db: null,
