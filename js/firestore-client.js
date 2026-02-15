@@ -474,6 +474,11 @@ async init(userId) {
                 UIManager?.showError(actualMessage.message);
                 DebugConsole?.error('Server', actualMessage.message);
                 break;
+				
+			case 'call-ended-confirm':
+				console.log('📞 Call end confirmed');
+				DebugConsole?.call('Call', 'Call end confirmed');
+				break;				
                 
             default:
                 console.warn(`Unknown message type: ${actualMessage.type}`);
