@@ -565,50 +565,56 @@ const CallManager = {
         this.cleanupCall();
     },
     
-    cleanupCall() {
-        console.log('Cleaning up call...');
-        DebugConsole?.info('Call', 'Cleaning up call resources');
-        
-        // Stop WebRTC metrics monitoring
-        if (window.WebRTCMetrics) {
-            WebRTCMetrics.stop();
-        }
-        
-        // Stop any notification sound
-        this.stopNotificationSound();
-        
-        CONFIG.isProcessingAnswer = false;
-        CONFIG.isInCall = false;
-        CONFIG.isCallActive = false;
-        CONFIG.manualHangupControl = false; // Reset the flag
-        
-        if (CONFIG.peerConnection) {
-            CONFIG.peerConnection.close();
-            CONFIG.peerConnection = null;
-        }
-        
-        if (CONFIG.elements.remoteVideo && CONFIG.elements.remoteVideo.srcObject) {
-            CONFIG.elements.remoteVideo.srcObject.getTracks().forEach(track => track.stop());
-            CONFIG.elements.remoteVideo.srcObject = null;
-        }
-        
-        CONFIG.targetSocketId = null;
-        CONFIG.targetUsername = null;
-        CONFIG.isInitiator = false;
-        CONFIG.incomingCallFrom = null;
-        CONFIG.iceCandidatesQueue = [];
-        
-        // Remove notification if exists
-        const notification = document.getElementById('incoming-call-notification');
-        if (notification) notification.remove();
-        
-        // ===== FORCE HANGUP BUTTON DISABLED =====
-        this.enableHangupButton(false);
-        
-        UIManager.showStatus('Ready');
-        UIManager.updateCallButtons();
-        DebugConsole?.info('Call', 'Call cleanup complete');
+cleanupCall() {
+    console.log('Cleaning up call...');
+    DebugConsole?.info('Call', 'Cleaning up call resources');
+    
+    // Reset WebRTC indicator to standby
+    if (UIManager.updateWebRTCIndicator) {
+        UIManager.updateWebRTCIndicator('standby');
     }
+    
+    // Stop WebRTC metrics monitoring
+    if (window.WebRTCMetrics) {
+        WebRTCMetrics.stop();
+    }
+    
+    // Stop any notification sound
+    this.stopNotificationSound();
+    
+    CONFIG.isProcessingAnswer = false;
+    CONFIG.isInCall = false;
+    CONFIG.isCallActive = false;
+    CONFIG.manualHangupControl = false; // Reset the flag
+    
+    if (CONFIG.peerConnection) {
+        CONFIG.peerConnection.close();
+        CONFIG.peerConnection = null;
+    }
+    
+    if (CONFIG.elements.remoteVideo && CONFIG.elements.remoteVideo.srcObject) {
+        CONFIG.elements.remoteVideo.srcObject.getTracks().forEach(track => track.stop());
+        CONFIG.elements.remoteVideo.srcObject = null;
+    }
+    
+    CONFIG.targetSocketId = null;
+    CONFIG.targetUsername = null;
+    CONFIG.isInitiator = false;
+    CONFIG.incomingCallFrom = null;
+    CONFIG.iceCandidatesQueue = [];
+    
+    // Remove notification if exists
+    const notification = document.getElementById('incoming-call-notification');
+    if (notification) notification.remove();
+    
+    // ===== FORCE HANGUP BUTTON DISABLED =====
+    this.enableHangupButton(false);
+    
+    UIManager.showStatus('Ready');
+    UIManager.updateCallButtons();
+    DebugConsole?.info('Call', 'Call cleanup complete');
+}
+
 };
 
 window.CallManager = CallManager;
