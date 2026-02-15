@@ -1,4 +1,4 @@
-// js/call-manager.js - COMPLETE FIXED VERSION WITH IMMEDIATE HANGUP
+// js/call-manager.js - FIRESTORE VERSION WITH IMMEDIATE HANGUP
 const CallManager = {
     // Add audio element for notification sound
     notificationAudio: null,
@@ -55,8 +55,8 @@ const CallManager = {
         // Create peer connection
         WebRTCManager.createPeerConnection();
         
-        // Send call initiation
-        WebSocketClient.sendToServer({
+        // Send call initiation via FIRESTORE
+        FirestoreClient.sendToServer({
             type: 'call-initiate',
             targetSocketId: socketToCall,
             callerId: CONFIG.myId,
@@ -360,8 +360,8 @@ const CallManager = {
             return;
         }
         
-        // Send acceptance
-        WebSocketClient.sendToServer({
+        // Send acceptance via FIRESTORE
+        FirestoreClient.sendToServer({
             type: 'call-accept',
             targetSocketId: CONFIG.targetSocketId,
             calleeId: CONFIG.myId,
@@ -390,7 +390,7 @@ const CallManager = {
         this.stopNotificationSound();
         
         if (CONFIG.targetSocketId) {
-            WebSocketClient.sendToServer({
+            FirestoreClient.sendToServer({
                 type: 'call-reject',
                 targetSocketId: CONFIG.targetSocketId
             });
@@ -500,34 +500,33 @@ const CallManager = {
         UIManager.showStatus('Call ended by ' + (data.endedByName || 'remote user'));
     },
     
-	
-	// Add this method to call-manager.js
-handleUnexpectedDisconnect() {
-    console.log('⚠️ Unexpected call disconnection');
-    DebugConsole?.warning('Call', 'Call ended unexpectedly');
-    
-    CONFIG.isInCall = false;
-    CONFIG.isCallActive = false;
-    
-    // Force UI update
-    if (CONFIG.isAdmin) {
-        const adminHangupBtn = document.getElementById('adminHangupBtn');
-        if (adminHangupBtn) {
-            adminHangupBtn.disabled = true;
-            adminHangupBtn.className = 'btn-hangup';
+    // Add this method to call-manager.js
+    handleUnexpectedDisconnect() {
+        console.log('⚠️ Unexpected call disconnection');
+        DebugConsole?.warning('Call', 'Call ended unexpectedly');
+        
+        CONFIG.isInCall = false;
+        CONFIG.isCallActive = false;
+        
+        // Force UI update
+        if (CONFIG.isAdmin) {
+            const adminHangupBtn = document.getElementById('adminHangupBtn');
+            if (adminHangupBtn) {
+                adminHangupBtn.disabled = true;
+                adminHangupBtn.className = 'btn-hangup';
+            }
+        } else {
+            const userHangupBtn = document.querySelector('.btn-hangup');
+            if (userHangupBtn) {
+                userHangupBtn.disabled = true;
+                userHangupBtn.className = 'btn-hangup';
+            }
         }
-    } else {
-        const userHangupBtn = document.querySelector('.btn-hangup');
-        if (userHangupBtn) {
-            userHangupBtn.disabled = true;
-            userHangupBtn.className = 'btn-hangup';
-        }
-    }
+        
+        this.cleanupCall();
+        UIManager.showStatus('Call disconnected');
+    },
     
-    this.cleanupCall();
-    UIManager.showStatus('Call disconnected');
-},
-	
     hangup() {
         console.log('=== CallManager.hangup() - stopping monitoring ===');
         DebugConsole?.call('Call', 'Ending call');
@@ -557,7 +556,7 @@ handleUnexpectedDisconnect() {
         
         // Normal hangup for connected call
         if (CONFIG.targetSocketId) {
-            WebSocketClient.sendToServer({
+            FirestoreClient.sendToServer({
                 type: 'call-end',
                 targetSocketId: CONFIG.targetSocketId
             });
@@ -569,11 +568,11 @@ handleUnexpectedDisconnect() {
     cleanupCall() {
         console.log('Cleaning up call...');
         DebugConsole?.info('Call', 'Cleaning up call resources');
-		
-		// Stop WebRTC metrics monitoring
-    if (window.WebRTCMetrics) {
-        WebRTCMetrics.stop();
-    }
+        
+        // Stop WebRTC metrics monitoring
+        if (window.WebRTCMetrics) {
+            WebRTCMetrics.stop();
+        }
         
         // Stop any notification sound
         this.stopNotificationSound();
