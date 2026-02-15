@@ -1,4 +1,4 @@
-// js/firestore-client.js - COMPLETE WITH FIRESTORE RELAY
+// js/firestore-client.js - COMPLETE WITH FIRESTORE RELAY AND CLIENT PINGS
 console.log('🔥🔥🔥 firestore-client.js STARTED EXECUTION 🔥🔥🔥');
 console.log('Line 1 executed');
 const FirestoreClient = {
@@ -19,79 +19,79 @@ const FirestoreClient = {
     maxReconnectAttempts: 20,
     isIntentionalDisconnect: false,
     
-    // Initialize Firebase and Firestore
-	
-	
-// Initialize Firebase and Firestore
-async init(userId) {
-    console.log('Initializing Firestore client for user:', userId);
-    DebugConsole?.info('Firestore', `Initializing for user: ${userId}`);
+    // ADDED: Ping interval property
+    pingInterval: null,
     
-    try {
-        // Initialize Firebase (config from your Firebase console)
-        const firebaseConfig = {
-            apiKey: "AIzaSyD9US_D9RfsoKu9K_lVRak7c_0Ht9k-5Ak",
-            authDomain: "relay-725ff.firebaseapp.com",
-            projectId: "relay-725ff",
-            storageBucket: "relay-725ff.firebasestorage.app",
-            messagingSenderId: "954800431802",
-            appId: "1:954800431802:web:9d095fc106260878fb1883"
-        };
+    // Initialize Firebase and Firestore
+    async init(userId) {
+        console.log('Initializing Firestore client for user:', userId);
+        DebugConsole?.info('Firestore', `Initializing for user: ${userId}`);
         
-        // Initialize Firebase if not already initialized
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-        
-        this.db = firebase.firestore();
-        this.currentUser = userId;
-        
-        // Enable offline persistence - ONLY attempt once, ignore errors on reconnect
         try {
-            await this.db.enablePersistence({ experimentalForceOwningTab: true })
-                .catch(err => {
-                    // These errors are expected in certain scenarios
-                    if (err.code === 'failed-precondition') {
-                        DebugConsole?.warning('Firestore', 'Multiple tabs open, persistence disabled');
-                    } else if (err.code === 'unimplemented') {
-                        DebugConsole?.warning('Firestore', 'Browser doesn\'t support persistence');
-                    } else if (err.message && err.message.includes('already started')) {
-                        // This happens on reconnect - ignore
-                        console.log('Persistence already enabled (reconnect scenario)');
-                    } else {
-                        // Unexpected error
-                        throw err;
-                    }
-                });
-        } catch (persistError) {
-            // Log but continue - persistence is optional
-            console.log('Persistence setup skipped:', persistError.message);
+            // Initialize Firebase (config from your Firebase console)
+            const firebaseConfig = {
+                apiKey: "AIzaSyD9US_D9RfsoKu9K_lVRak7c_0Ht9k-5Ak",
+                authDomain: "relay-725ff.firebaseapp.com",
+                projectId: "relay-725ff",
+                storageBucket: "relay-725ff.firebasestorage.app",
+                messagingSenderId: "954800431802",
+                appId: "1:954800431802:web:9d095fc106260878fb1883"
+            };
+            
+            // Initialize Firebase if not already initialized
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            }
+            
+            this.db = firebase.firestore();
+            this.currentUser = userId;
+            
+            // Enable offline persistence - ONLY attempt once, ignore errors on reconnect
+            try {
+                await this.db.enablePersistence({ experimentalForceOwningTab: true })
+                    .catch(err => {
+                        // These errors are expected in certain scenarios
+                        if (err.code === 'failed-precondition') {
+                            DebugConsole?.warning('Firestore', 'Multiple tabs open, persistence disabled');
+                        } else if (err.code === 'unimplemented') {
+                            DebugConsole?.warning('Firestore', 'Browser doesn\'t support persistence');
+                        } else if (err.message && err.message.includes('already started')) {
+                            // This happens on reconnect - ignore
+                            console.log('Persistence already enabled (reconnect scenario)');
+                        } else {
+                            // Unexpected error
+                            throw err;
+                        }
+                    });
+            } catch (persistError) {
+                // Log but continue - persistence is optional
+                console.log('Persistence setup skipped:', persistError.message);
+            }
+            
+            // Set up listener for incoming messages
+            await this.setupMessageListener(userId);
+            
+            this.isInitialized = true;
+            this.reconnectAttempts = 0;
+            
+            // ADDED: Start ping interval after successful initialization
+            this.startPingInterval();
+            
+            console.log('✅ Firestore client initialized');
+            DebugConsole?.success('Firestore', 'Client initialized successfully');
+            UIManager?.showStatus('Connected to server');
+            
+            return true;
+            
+        } catch (error) {
+            console.error('Failed to initialize Firestore:', error);
+            DebugConsole?.error('Firestore', `Init failed: ${error.message}`);
+            UIManager?.showError('Connection failed');
+            this.scheduleReconnect(userId);
+            return false;
         }
-        
-        // Set up listener for incoming messages
-        await this.setupMessageListener(userId);
-        
-       
-        this.isInitialized = true;
-        this.reconnectAttempts = 0;
-        
-        console.log('✅ Firestore client initialized');
-        DebugConsole?.success('Firestore', 'Client initialized successfully');
-        UIManager?.showStatus('Connected to server');
-        
-        return true;
-        
-    } catch (error) {
-        console.error('Failed to initialize Firestore:', error);
-        DebugConsole?.error('Firestore', `Init failed: ${error.message}`);
-        UIManager?.showError('Connection failed');
-        this.scheduleReconnect(userId);
-        return false;
-    }
-},
-	
-	
-	
+    },
+    
     // Set up Firestore listener for incoming messages
     async setupMessageListener(userId) {
         console.log('Setting up Firestore listener for:', userId);
@@ -230,6 +230,27 @@ async init(userId) {
         this.sendToServer({ type: 'pong' });
     },
     
+    // ADDED: Start periodic ping interval
+    startPingInterval() {
+        // Clear any existing interval
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
+            this.pingInterval = null;
+        }
+        
+        console.log('⏰ Starting ping interval (30 seconds)');
+        DebugConsole?.network('Firestore', 'Starting ping interval');
+        
+        // Send ping every 30 seconds
+        this.pingInterval = setInterval(() => {
+            if (this.isInitialized && this.currentUser) {
+                console.log('🏓 Sending client ping');
+                DebugConsole?.network('Firestore', 'Sending client ping');
+                this.sendToServer({ type: 'ping' });
+            }
+        }, 30000); // 30 seconds
+    },
+    
     // Schedule reconnection attempt
     scheduleReconnect(userId) {
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
@@ -253,6 +274,13 @@ async init(userId) {
     
     // Clean up listeners
     async cleanup() {
+        // ADDED: Clear ping interval
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
+            this.pingInterval = null;
+            console.log('⏹️ Ping interval cleared');
+        }
+        
         if (this.unsubscribe) {
             this.unsubscribe();
             this.unsubscribe = null;
@@ -474,11 +502,11 @@ async init(userId) {
                 UIManager?.showError(actualMessage.message);
                 DebugConsole?.error('Server', actualMessage.message);
                 break;
-				
-			case 'call-ended-confirm':
-				console.log('📞 Call end confirmed');
-				DebugConsole?.call('Call', 'Call end confirmed');
-				break;				
+                
+            case 'call-ended-confirm':
+                console.log('📞 Call end confirmed');
+                DebugConsole?.call('Call', 'Call end confirmed');
+                break;                
                 
             default:
                 console.warn(`Unknown message type: ${actualMessage.type}`);
