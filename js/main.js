@@ -49,8 +49,8 @@ function configureFirestore() {
         authDomain: "relay.firebaseapp.com",
         projectId: "relay",
         storageBucket: "relay.appspot.com",
-        messagingSenderId: "YOUR_SENDER_ID",
-        appId: "YOUR_APP_ID"
+        messagingSenderId: "954800431802",
+        appId: "1:954800431802:web:9d095fc106260878fb1883"
     };
     
     CONFIG.firebaseConfig = firebaseConfig;
