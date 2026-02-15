@@ -73,7 +73,13 @@ const FirestoreClient = {
             
             this.isInitialized = true;
             this.reconnectAttempts = 0;
-            
+            // Send an immediate ping to get initial latency
+			setTimeout(() => {
+				if (this.isInitialized && this.currentUser) {
+				console.log('🏓 Sending initial ping');
+				this.sendToServer({ type: 'ping' });
+				}
+			}, 1000);
             // ADDED: Start ping interval after successful initialization
             this.startPingInterval();
             
