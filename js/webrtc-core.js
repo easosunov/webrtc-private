@@ -1,4 +1,4 @@
-// js/webrtc-core.js - FIRESTORE VERSION WITH TRICKLE ICE, ICE RESTART, AND FAILURE DIAGNOSTICS
+// js/webrtc-core.js - FIRESTORE VERSION WITH PROPER SERIALIZATION
 const WebRTCManager = {
     // Camera properties
     hasMultipleCameras: false,
@@ -117,11 +117,18 @@ const WebRTCManager = {
                 
                 DebugConsole?.network('ICE', `${candidateType} candidate generated`);
                 
-                // SEND VIA FIRESTORE
+                // FIX: Serialize the ICE candidate properly
+                const serializedCandidate = {
+                    candidate: event.candidate.candidate,
+                    sdpMid: event.candidate.sdpMid,
+                    sdpMLineIndex: event.candidate.sdpMLineIndex,
+                    usernameFragment: event.candidate.usernameFragment
+                };
+                
                 FirestoreClient.sendToServer({
                     type: 'ice-candidate',
                     targetSocketId: CONFIG.targetSocketId,
-                    candidate: event.candidate
+                    candidate: serializedCandidate
                 });
             }
         };
@@ -344,11 +351,14 @@ const WebRTCManager = {
                 
                 await CONFIG.peerConnection.setLocalDescription(offer);
                 
-                // SEND VIA FIRESTORE
+                // SEND VIA FIRESTORE - WITH SERIALIZATION
                 FirestoreClient.sendToServer({
                     type: 'offer',
                     targetSocketId: CONFIG.targetSocketId,
-                    offer: offer,
+                    offer: {
+                        type: offer.type,
+                        sdp: offer.sdp
+                    },
                     sender: CONFIG.myUsername
                 });
                 
@@ -480,11 +490,14 @@ const WebRTCManager = {
             console.log('✅ Local description set - Trickle ICE will send candidates as they arrive');
             DebugConsole?.network('WebRTC', 'Local description set');
             
-            // SEND VIA FIRESTORE
+            // SEND VIA FIRESTORE - WITH SERIALIZATION
             FirestoreClient.sendToServer({
                 type: 'offer',
                 targetSocketId: CONFIG.targetSocketId,
-                offer: offer,
+                offer: {
+                    type: offer.type,
+                    sdp: offer.sdp
+                },
                 sender: CONFIG.myUsername
             });
             
@@ -514,18 +527,27 @@ const WebRTCManager = {
         }
         
         try {
-            await CONFIG.peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+            // Reconstruct RTCSessionDescription from serialized data
+            const offerDescription = new RTCSessionDescription({
+                type: data.offer.type,
+                sdp: data.offer.sdp
+            });
+            
+            await CONFIG.peerConnection.setRemoteDescription(offerDescription);
             console.log('✅ Remote description set');
             DebugConsole?.network('WebRTC', 'Remote description set');
             
             const answer = await CONFIG.peerConnection.createAnswer();
             await CONFIG.peerConnection.setLocalDescription(answer);
             
-            // SEND VIA FIRESTORE
+            // SEND VIA FIRESTORE - WITH SERIALIZATION
             FirestoreClient.sendToServer({
                 type: 'answer',
                 targetSocketId: CONFIG.targetSocketId,
-                answer: answer,
+                answer: {
+                    type: answer.type,
+                    sdp: answer.sdp
+                },
                 sender: CONFIG.myUsername
             });
             
@@ -552,7 +574,13 @@ const WebRTCManager = {
         }
         
         try {
-            await CONFIG.peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+            // Reconstruct RTCSessionDescription from serialized data
+            const answerDescription = new RTCSessionDescription({
+                type: data.answer.type,
+                sdp: data.answer.sdp
+            });
+            
+            await CONFIG.peerConnection.setRemoteDescription(answerDescription);
             console.log('✅ Remote description set');
             DebugConsole?.network('WebRTC', 'Remote description set from answer');
             this.processIceCandidateQueue();
@@ -579,7 +607,14 @@ const WebRTCManager = {
         }
         
         try {
-            const iceCandidate = new RTCIceCandidate(data.candidate);
+            // Reconstruct RTCIceCandidate from serialized data
+            const iceCandidate = new RTCIceCandidate({
+                candidate: data.candidate.candidate,
+                sdpMid: data.candidate.sdpMid,
+                sdpMLineIndex: data.candidate.sdpMLineIndex,
+                usernameFragment: data.candidate.usernameFragment
+            });
+            
             CONFIG.peerConnection.addIceCandidate(iceCandidate)
                 .then(() => {
                     console.log('✅ ICE candidate added');
@@ -603,7 +638,14 @@ const WebRTCManager = {
         
         CONFIG.iceCandidatesQueue.forEach(candidate => {
             try {
-                const iceCandidate = new RTCIceCandidate(candidate);
+                // Reconstruct RTCIceCandidate from serialized data
+                const iceCandidate = new RTCIceCandidate({
+                    candidate: candidate.candidate,
+                    sdpMid: candidate.sdpMid,
+                    sdpMLineIndex: candidate.sdpMLineIndex,
+                    usernameFragment: candidate.usernameFragment
+                });
+                
                 CONFIG.peerConnection.addIceCandidate(iceCandidate)
                     .catch(e => {
                         console.error('❌ Failed to add queued ICE candidate:', e);
@@ -621,7 +663,6 @@ const WebRTCManager = {
     
     // ========== CAMERA DETECTION AND SWITCHING ==========
     // (Keep all your existing camera methods here - they remain unchanged)
-    // ... your camera detection and switching code ...
     
     checkAudioState() {
         console.log('🔍 AUDIO STATE CHECK:');
