@@ -1,4 +1,4 @@
-// js/auth-manager.js - COMPLETE FIXED VERSION WITH VIDEO STABILITY
+// js/auth-manager.js - FIRESTORE VERSION WITH VIDEO STABILITY
 const AuthManager = {
     // Add this flag to prevent multiple simultaneous requests
     permissionsRequestInProgress: false,
@@ -15,12 +15,26 @@ const AuthManager = {
         console.log('Login attempt with access code:', accessCode);
         UIManager.showStatus('Logging in...');
         
-        // Send login request (server expects 'accessCode' field)
-        WebSocketClient.sendToServer({
-            type: 'login',
-            accessCode: accessCode,
-            timestamp: Date.now()
-        });
+        try {
+            // STEP 1: Initialize Firestore client with username (access code)
+            UIManager.showStatus('Connecting to server...');
+            await FirestoreClient.init(accessCode);
+            
+            // STEP 2: Send login message via Firestore
+            UIManager.showStatus('Authenticating...');
+            FirestoreClient.sendToServer({
+                type: 'login',
+                accessCode: accessCode,
+                timestamp: Date.now()
+            });
+            
+            // Note: The actual login success will come via Firestore listener
+            // and be handled by handleLoginSuccess()
+            
+        } catch (error) {
+            console.error('Login failed:', error);
+            UIManager.showError(`Login failed: ${error.message}`);
+        }
     },
     
     handleLoginSuccess(data) {
@@ -37,7 +51,7 @@ const AuthManager = {
         
         // Request user list if admin
         if (CONFIG.isAdmin) {
-            setTimeout(() => WebSocketClient.sendToServer({ type: 'get-users' }), 500);
+            setTimeout(() => FirestoreClient.sendToServer({ type: 'get-users' }), 500);
         }
         
         // Check permissions
@@ -48,7 +62,14 @@ const AuthManager = {
     },
     
     logout() {
-        WebSocketClient.sendToServer({ type: 'logout' });
+        // Send logout message via Firestore
+        FirestoreClient.sendToServer({ type: 'logout' });
+        
+        // Disconnect Firestore client
+        if (FirestoreClient && FirestoreClient.disconnect) {
+            FirestoreClient.disconnect();
+        }
+        
         CallManager.cleanupCall();
         
         if (CONFIG.localStream) {
@@ -179,4 +200,5 @@ const AuthManager = {
     }
 };
 
+// Export for use
 window.AuthManager = AuthManager;
