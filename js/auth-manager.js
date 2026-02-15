@@ -1,7 +1,10 @@
-// js/auth-manager.js - FIRESTORE VERSION WITH VIDEO STABILITY
+// js/auth-manager.js - FIRESTORE VERSION WITH VIDEO STABILITY AND LOGIN STATE TRACKING
 const AuthManager = {
     // Add this flag to prevent multiple simultaneous requests
     permissionsRequestInProgress: false,
+    
+    // ADD THIS: Track login state to prevent race conditions
+    loginInProgress: false,
     
     async login(accessCode) {
         console.log('Login function called with:', accessCode);
@@ -12,8 +15,26 @@ const AuthManager = {
             return;
         }
         
+        // ADD THIS: Prevent multiple simultaneous login attempts
+        if (this.loginInProgress) {
+            console.log('Login already in progress, ignoring duplicate attempt');
+            UIManager.showStatus('Login already in progress...');
+            return;
+        }
+        
         console.log('Login attempt with access code:', accessCode);
         UIManager.showStatus('Logging in...');
+        
+        // Set login in progress flag
+        this.loginInProgress = true;
+        
+        // Check if FirestoreClient is available
+        if (!window.FirestoreClient) {
+            console.error('FirestoreClient is NOT defined!');
+            UIManager.showError('System not ready - please refresh');
+            this.loginInProgress = false;
+            return;
+        }
         
         try {
             // STEP 1: Initialize Firestore client with username (access code)
@@ -34,10 +55,14 @@ const AuthManager = {
         } catch (error) {
             console.error('Login failed:', error);
             UIManager.showError(`Login failed: ${error.message}`);
+            this.loginInProgress = false; // Reset flag on error
         }
     },
     
     handleLoginSuccess(data) {
+        // Reset login in progress flag
+        this.loginInProgress = false;
+        
         CONFIG.myId = data.userId;
         CONFIG.myUsername = data.username;
         CONFIG.isAdmin = data.isAdmin || false;
@@ -103,6 +128,9 @@ const AuthManager = {
         }
         
         UIManager.showStatus('Logged out');
+        
+        // Reset login flag
+        this.loginInProgress = false;
     },
     
     async checkPermissions() {
