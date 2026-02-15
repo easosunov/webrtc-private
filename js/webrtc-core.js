@@ -1,4 +1,4 @@
-// js/webrtc-core.js - FIRESTORE VERSION WITH PROPER SERIALIZATION
+// js/webrtc-core.js - FIRESTORE VERSION WITH PROPER SERIALIZATION AND TURN TIMEOUT FIXES
 const WebRTCManager = {
     // Camera properties
     hasMultipleCameras: false,
@@ -287,7 +287,7 @@ const WebRTCManager = {
             }
         };
         
-        // Handle incoming tracks
+        // Handle incoming tracks - FIXED for play interruption warning
         CONFIG.peerConnection.ontrack = (event) => {
             console.log('🎬 ontrack event:', event.track.kind);
             DebugConsole?.success('WebRTC', `Received remote ${event.track.kind} track`);
@@ -296,32 +296,36 @@ const WebRTCManager = {
                 CONFIG.remoteStream.addTrack(event.track);
                 DebugConsole?.info('WebRTC', `Added ${event.track.kind} to remote stream`);
                 
-// In ontrack handler, around line 280
-if (CONFIG.elements.remoteVideo) {
-    CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
-    CONFIG.elements.remoteVideo.muted = false;
-    
-    // Only call play if video is not already playing
-    if (CONFIG.elements.remoteVideo.paused) {
-        CONFIG.elements.remoteVideo.play()
-            .then(() => {
-                console.log(`▶️ Remote ${event.track.kind} playing`);
-                DebugConsole?.success('WebRTC', `Remote ${event.track.kind} playing`);
-                
-                if (event.track.kind === 'audio') {
-                    console.log('🔊 AUDIO TRACK CONNECTED!');
-                    DebugConsole?.success('WebRTC', 'Audio track connected');
+                if (CONFIG.elements.remoteVideo) {
+                    CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
+                    CONFIG.elements.remoteVideo.muted = false;
+                    
+                    // FIX: Only call play if video is not already playing
+                    if (CONFIG.elements.remoteVideo.paused) {
+                        CONFIG.elements.remoteVideo.play()
+                            .then(() => {
+                                console.log(`▶️ Remote ${event.track.kind} playing`);
+                                DebugConsole?.success('WebRTC', `Remote ${event.track.kind} playing`);
+                                
+                                if (event.track.kind === 'audio') {
+                                    console.log('🔊 AUDIO TRACK CONNECTED!');
+                                    DebugConsole?.success('WebRTC', 'Audio track connected');
+                                    setTimeout(() => {
+                                        const audioTracks = CONFIG.remoteStream.getAudioTracks();
+                                        console.log(`Remote audio tracks: ${audioTracks.length}`);
+                                        DebugConsole?.info('WebRTC', `Remote audio tracks: ${audioTracks.length}`);
+                                    }, 100);
+                                }
+                            })
+                            .catch(error => {
+                                // FIX: Only log if it's not the interruption error
+                                if (error.name !== 'AbortError' && error.message && !error.message.includes('interrupted')) {
+                                    console.log(`Play failed for ${event.track.kind}:`, error);
+                                    DebugConsole?.warning('WebRTC', `Play failed for ${event.track.kind}: ${error.message}`);
+                                }
+                            });
+                    }
                 }
-            })
-            .catch(error => {
-                // Only log if it's not the interruption error
-                if (error.name !== 'AbortError' && error.message && !error.message.includes('interrupted')) {
-                    console.log(`Play failed for ${event.track.kind}:`, error);
-                    DebugConsole?.warning('WebRTC', `Play failed for ${event.track.kind}: ${error.message}`);
-                }
-            });
-    }
-}
             }
         };
         
@@ -329,10 +333,6 @@ if (CONFIG.elements.remoteVideo) {
         DebugConsole?.success('WebRTC', 'Peer connection created successfully');
     },
     
-	
-	
-	
-	
     // ===== ICE RESTART METHOD =====
     async restartIce() {
         if (!CONFIG.peerConnection) {
@@ -401,8 +401,13 @@ if (CONFIG.elements.remoteVideo) {
         }
     },
     
-    // ===== TURN SERVER CONNECTIVITY TEST =====
+    // ===== TURN SERVER CONNECTIVITY TEST - FIXED to reduce noise =====
     async testTurnServers() {
+        // Don't test if call is already connected
+        if (CONFIG.isInCall && CONFIG.peerConnection?.iceConnectionState === 'connected') {
+            return;
+        }
+        
         console.log('🔍 Testing TURN server connectivity...');
         
         const servers = CONFIG.peerConfig?.iceServers || [];
@@ -414,15 +419,20 @@ if (CONFIG.elements.remoteVideo) {
         }
         
         for (const server of turnServers) {
+            // Don't test if call is already connected
+            if (CONFIG.isInCall && CONFIG.peerConnection?.iceConnectionState === 'connected') {
+                return;
+            }
+            
             const testPC = new RTCPeerConnection({ iceServers: [server] });
             testPC.createDataChannel('test');
             
             let relayFound = false;
             let testTimeout = setTimeout(() => {
-                if (!relayFound) {
-                    console.error(`❌ TURN server unreachable: ${server.urls}`);
-                    CONFIG.iceFailureReasons.push(`TURN timeout: ${server.urls}`);
-                    DebugConsole?.error('ICE', `TURN timeout: ${server.urls}`);
+                if (!relayFound && !CONFIG.isInCall) {
+                    // FIX: Only log as info, not error, since TURN is optional
+                    console.log(`ℹ️ TURN server timeout (normal if direct connection works): ${server.urls}`);
+                    DebugConsole?.info('ICE', `TURN timeout (normal): ${server.urls}`);
                 }
                 testPC.close();
             }, 3000);
