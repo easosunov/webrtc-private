@@ -402,8 +402,6 @@ if (CONFIG.elements.remoteVideo) {
     },
     
     // ===== TURN SERVER CONNECTIVITY TEST =====
-	
-	
     async testTurnServers() {
         console.log('🔍 Testing TURN server connectivity...');
         
@@ -443,8 +441,6 @@ if (CONFIG.elements.remoteVideo) {
         }
     },
     
-	
-	
     // ===== ICE FAILURE ANALYSIS =====
     analyzeIceFailure() {
         console.log('🔍 Analyzing ICE failure...');
