@@ -95,7 +95,7 @@ async init(userId) {
         this.scheduleReconnect(userId);
         return false;
     }
-}
+},
 	
 	
 	
