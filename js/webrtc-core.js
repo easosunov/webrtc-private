@@ -1,4 +1,4 @@
-// js/webrtc-core.js - FIRESTORE VERSION WITH PROPER SERIALIZATION AND TURN TIMEOUT FIXES
+// js/webrtc-core.js - FIRESTORE VERSION WITH CAMERA SWITCHING AND PROPER SERIALIZATION
 const WebRTCManager = {
     // Camera properties
     hasMultipleCameras: false,
@@ -24,7 +24,7 @@ const WebRTCManager = {
             iceServers: CONFIG.peerConfig?.iceServers || [
                 { urls: "stun:stun.l.google.com:19302" }
             ],
-            iceCandidatePoolSize: 5, // Reduced - Trickle ICE sends candidates immediately
+            iceCandidatePoolSize: 5,
             sdpSemantics: 'unified-plan',
             bundlePolicy: 'max-bundle',
             rtcpMuxPolicy: 'require'
@@ -133,7 +133,7 @@ const WebRTCManager = {
             }
         };
         
-        // ===== ENHANCED ICE CONNECTION STATE MONITORING WITH FAILURE ANALYSIS =====
+        // ===== ENHANCED ICE CONNECTION STATE MONITORING =====
         CONFIG.peerConnection.oniceconnectionstatechange = () => {
             const state = CONFIG.peerConnection.iceConnectionState;
             console.log('🧊 ICE connection state:', state);
@@ -678,7 +678,457 @@ const WebRTCManager = {
     },
     
     // ========== CAMERA DETECTION AND SWITCHING ==========
-    // (Keep all your existing camera methods here - they remain unchanged)
+    
+    // Initialize camera detection - called AFTER stream exists
+    async initCameras() {
+        // Don't initialize twice
+        if (this.cameraInitialized) {
+            console.log('Camera already initialized');
+            return;
+        }
+        
+        console.log('📱 Initializing camera system...');
+        DebugConsole?.info('Camera', 'Initializing camera system');
+        
+        // Wait for local stream to be available (but don't modify it)
+        const streamReady = await this.waitForStream();
+        if (!streamReady) {
+            console.warn('No local stream available for camera initialization');
+            return;
+        }
+        
+        // Detect available cameras (this doesn't affect the stream)
+        await this.detectCameras();
+        
+        // Setup click handlers (these just add event listeners)
+        this.setupCameraClickHandlers();
+        
+        // Show camera indicator
+        this.updateCameraIndicator();
+        
+        // Ensure video is actually playing
+        this.ensureVideoDisplay();
+        
+        this.cameraInitialized = true;
+        console.log('✅ Camera system initialized');
+        DebugConsole?.success('Camera', 'Camera system initialized');
+    },
+    
+    // Ensure video is displayed properly
+    ensureVideoDisplay() {
+        console.log('🔍 Ensuring video display...');
+        
+        if (!CONFIG.localStream) {
+            console.warn('No local stream to display');
+            return;
+        }
+        
+        const localVideo = document.getElementById('localVideo');
+        if (!localVideo) {
+            console.warn('Local video element not found');
+            return;
+        }
+        
+        // Force the video element to use the stream
+        localVideo.srcObject = CONFIG.localStream;
+        localVideo.muted = true;
+        
+        // Try to play
+        localVideo.play()
+            .then(() => {
+                console.log('✅ Local video playing');
+                DebugConsole?.success('Video', 'Local video playing');
+            })
+            .catch(e => {
+                console.log('Local video play error:', e);
+                // Retry after a delay
+                setTimeout(() => {
+                    localVideo.play().catch(console.log);
+                }, 500);
+            });
+    },
+    
+    // Wait for stream to be available
+    waitForStream() {
+        return new Promise((resolve) => {
+            if (CONFIG.localStream && CONFIG.localStream.getVideoTracks().length > 0) {
+                console.log('Stream already available');
+                resolve(true);
+                return;
+            }
+            
+            console.log('Waiting for local stream...');
+            let attempts = 0;
+            const maxAttempts = 20; // 10 seconds total (500ms * 20)
+            
+            const checkInterval = setInterval(() => {
+                attempts++;
+                if (CONFIG.localStream && CONFIG.localStream.getVideoTracks().length > 0) {
+                    console.log('Stream detected after', attempts * 0.5, 'seconds');
+                    clearInterval(checkInterval);
+                    resolve(true);
+                } else if (attempts >= maxAttempts) {
+                    console.warn('Stream timeout after', maxAttempts * 0.5, 'seconds');
+                    clearInterval(checkInterval);
+                    resolve(false);
+                }
+            }, 500);
+        });
+    },
+    
+    // Detect available cameras
+    async detectCameras() {
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(device => device.kind === 'videoinput');
+            
+            this.hasMultipleCameras = videoDevices.length > 1;
+            
+            console.log(`📷 Detected ${videoDevices.length} camera(s)`);
+            DebugConsole?.info('Camera', `Detected ${videoDevices.length} camera(s)`);
+            
+            videoDevices.forEach((device, index) => {
+                console.log(`  Camera ${index + 1}: ${device.label || 'Unnamed'}`);
+            });
+            
+            this.updateCameraButtonVisibility();
+            return videoDevices;
+        } catch (error) {
+            console.error('Failed to detect cameras:', error);
+            return [];
+        }
+    },
+    
+    // Setup click handlers for camera switching
+    setupCameraClickHandlers() {
+        const localVideo = document.getElementById('localVideo');
+        if (!localVideo) {
+            console.warn('Local video element not found');
+            return;
+        }
+        
+        // Remove any existing listeners by cloning
+        const newLocalVideo = localVideo.cloneNode(true);
+        if (localVideo.parentNode) {
+            localVideo.parentNode.replaceChild(newLocalVideo, localVideo);
+            
+            // Add click handler to new video
+            newLocalVideo.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.handleCameraClick();
+            });
+            
+            // Visual indicator
+            newLocalVideo.style.cursor = 'pointer';
+            newLocalVideo.title = 'Click to switch camera';
+            
+            // Re-attach drag handlers after a delay
+            setTimeout(() => {
+                if (typeof initDraggableVideo === 'function') {
+                    initDraggableVideo();
+                }
+            }, 100);
+        }
+        
+        // Also setup button click handler
+        const switchBtn = document.getElementById('switchCameraBtn');
+        if (switchBtn) {
+            // Remove old listeners by cloning
+            const newBtn = switchBtn.cloneNode(true);
+            if (switchBtn.parentNode) {
+                switchBtn.parentNode.replaceChild(newBtn, switchBtn);
+                
+                newBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.handleCameraClick();
+                });
+            }
+        }
+        
+        console.log('Camera click handlers setup complete');
+    },
+    
+    // Handle camera click (from video or button)
+    async handleCameraClick() {
+        if (this.cameraSwitchInProgress) {
+            console.log('Camera switch already in progress');
+            return;
+        }
+        
+        if (!this.hasMultipleCameras) {
+            DebugConsole?.info('Camera', 'No alternative camera available');
+            UIManager.showStatus('Only one camera detected');
+            return;
+        }
+        
+        if (!CONFIG.localStream) {
+            console.warn('No local stream for camera switch');
+            return;
+        }
+        
+        await this.switchCamera();
+    },
+    
+    // Update camera button visibility
+    updateCameraButtonVisibility() {
+        const switchBtn = document.getElementById('switchCameraBtn');
+        if (switchBtn) {
+            switchBtn.style.display = this.hasMultipleCameras ? 'inline-block' : 'none';
+            console.log(`Camera button ${this.hasMultipleCameras ? 'shown' : 'hidden'}`);
+        }
+    },
+    
+    // Update camera indicator
+    updateCameraIndicator() {
+        let indicator = document.getElementById('cameraIndicator');
+        
+        // Create indicator if it doesn't exist
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.id = 'cameraIndicator';
+            indicator.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                left: 20px;
+                background: rgba(0,0,0,0.7);
+                color: white;
+                padding: 8px 16px;
+                border-radius: 30px;
+                font-size: 16px;
+                font-weight: bold;
+                z-index: 10001;
+                pointer-events: none;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+                backdrop-filter: blur(5px);
+                border: 1px solid rgba(255,255,255,0.2);
+            `;
+            document.body.appendChild(indicator);
+            console.log('Created camera indicator');
+        }
+        
+        if (CONFIG.localStream && CONFIG.localStream.getVideoTracks().length > 0) {
+            indicator.style.display = 'block';
+            indicator.innerHTML = this.currentFacingMode === 'user' ? '🤳 FRONT CAMERA' : '📷 REAR CAMERA';
+        } else {
+            indicator.style.display = 'none';
+        }
+    },
+    
+    // Recover video if it disappears
+    recoverVideo() {
+        console.log('🔄 Attempting to recover video...');
+        
+        if (!CONFIG.localStream) {
+            console.warn('No stream to recover');
+            return false;
+        }
+        
+        const localVideo = document.getElementById('localVideo');
+        if (!localVideo) {
+            console.warn('Local video element not found');
+            return false;
+        }
+        
+        // Check if stream has video tracks
+        const videoTracks = CONFIG.localStream.getVideoTracks();
+        if (videoTracks.length === 0) {
+            console.warn('No video tracks in stream');
+            return false;
+        }
+        
+        console.log('Video track readyState:', videoTracks[0].readyState);
+        console.log('Video track enabled:', videoTracks[0].enabled);
+        
+        // Reattach the stream
+        localVideo.srcObject = CONFIG.localStream;
+        localVideo.muted = true;
+        
+        // Try to play with promise handling
+        const playPromise = localVideo.play();
+        if (playPromise !== undefined) {
+            playPromise
+                .then(() => {
+                    console.log('✅ Video recovered successfully');
+                    DebugConsole?.success('Video', 'Video recovered');
+                    return true;
+                })
+                .catch(error => {
+                    console.log('Recovery play failed:', error);
+                    // Try one more time with user interaction
+                    document.addEventListener('click', function onClick() {
+                        localVideo.play().catch(console.log);
+                        document.removeEventListener('click', onClick);
+                    }, { once: true });
+                    UIManager.showStatus('Click screen to restore video');
+                    return false;
+                });
+        }
+        return true;
+    },
+    
+    // Switch camera during active call - SIMPLIFIED AND RELIABLE
+    async switchCamera() {
+        if (this.cameraSwitchInProgress) {
+            console.log('Camera switch already in progress, skipping');
+            return false;
+        }
+        
+        if (!CONFIG.localStream) {
+            console.warn('No local stream to switch camera');
+            UIManager.showError('No camera active');
+            return false;
+        }
+        
+        this.cameraSwitchInProgress = true;
+        console.log('🔄 Attempting to switch camera from', this.currentFacingMode);
+        DebugConsole?.info('Camera', 'Switching camera...');
+        
+        // Show feedback
+        UIManager.showStatus('Switching camera...');
+        
+        // Toggle facing mode
+        const newFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
+        
+        try {
+            // Get current audio tracks
+            const audioTracks = CONFIG.localStream.getAudioTracks();
+            
+            // Get the local video element
+            const localVideo = document.getElementById('localVideo');
+            
+            // Stop all tracks in the current stream
+            CONFIG.localStream.getTracks().forEach(track => {
+                track.stop();
+            });
+            
+            // Clear the video element
+            if (localVideo) {
+                localVideo.srcObject = null;
+            }
+            
+            // Small delay to let hardware reset
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // Create new constraints
+            const constraints = {
+                audio: true,
+                video: {
+                    facingMode: newFacingMode,
+                    width: { ideal: 640 },
+                    height: { ideal: 480 }
+                }
+            };
+            
+            console.log('📷 Requesting camera with facing mode:', newFacingMode);
+            
+            // Get brand new stream
+            const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+            
+            // Update CONFIG with new stream
+            CONFIG.localStream = newStream;
+            
+            // Set the new stream to video element
+            if (localVideo) {
+                localVideo.srcObject = newStream;
+                localVideo.muted = true;
+                
+                // Play
+                try {
+                    await localVideo.play();
+                    console.log('✅ Local video playing after switch');
+                } catch (playError) {
+                    console.log('Play error after switch:', playError);
+                    // Retry once
+                    setTimeout(async () => {
+                        try {
+                            await localVideo.play();
+                            console.log('✅ Local video playing after retry');
+                        } catch (e) {
+                            console.log('Final play failed:', e);
+                        }
+                    }, 200);
+                }
+            }
+            
+            // If in a call, we need to renegotiate
+            if (CONFIG.peerConnection && CONFIG.isInCall) {
+                console.log('In call, need to renegotiate after camera switch');
+                
+                // Get the new video track
+                const newVideoTrack = newStream.getVideoTracks()[0];
+                
+                // Replace the track in peer connection
+                const senders = CONFIG.peerConnection.getSenders();
+                const videoSender = senders.find(sender => 
+                    sender.track && sender.track.kind === 'video'
+                );
+                
+                if (videoSender) {
+                    await videoSender.replaceTrack(newVideoTrack);
+                    console.log('✅ Video track replaced in peer connection');
+                }
+                
+                // Also need to update audio tracks if they changed
+                const audioSender = senders.find(sender => 
+                    sender.track && sender.track.kind === 'audio'
+                );
+                
+                if (audioSender) {
+                    const newAudioTrack = newStream.getAudioTracks()[0];
+                    if (newAudioTrack) {
+                        await audioSender.replaceTrack(newAudioTrack);
+                        console.log('✅ Audio track replaced in peer connection');
+                    }
+                }
+            }
+            
+            // Update facing mode
+            this.currentFacingMode = newFacingMode;
+            
+            // Update indicator
+            this.updateCameraIndicator();
+            
+            // Show success message
+            const cameraIcon = newFacingMode === 'user' ? '🤳' : '📷';
+            UIManager.showStatus(`${cameraIcon} ${newFacingMode === 'user' ? 'Front' : 'Rear'} camera`);
+            
+            this.cameraSwitchInProgress = false;
+            return true;
+            
+        } catch (error) {
+            console.error('Failed to switch camera:', error);
+            DebugConsole?.error('Camera', `Switch failed: ${error.message}`);
+            UIManager.showError('Could not switch camera');
+            
+            // Try to recover by requesting original camera
+            try {
+                console.log('Attempting to recover original camera...');
+                const fallbackConstraints = {
+                    audio: true,
+                    video: {
+                        facingMode: this.currentFacingMode,
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    }
+                };
+                const fallbackStream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+                CONFIG.localStream = fallbackStream;
+                
+                const localVideo = document.getElementById('localVideo');
+                if (localVideo) {
+                    localVideo.srcObject = fallbackStream;
+                    localVideo.play().catch(console.log);
+                }
+                UIManager.showStatus('Reverted to original camera');
+            } catch (fallbackError) {
+                console.error('Recovery failed:', fallbackError);
+            }
+            
+            this.cameraSwitchInProgress = false;
+            return false;
+        }
+    },
     
     checkAudioState() {
         console.log('🔍 AUDIO STATE CHECK:');
