@@ -18,69 +18,85 @@ const FirestoreClient = {
     isIntentionalDisconnect: false,
     
     // Initialize Firebase and Firestore
-    async init(userId) {
-        console.log('Initializing Firestore client for user:', userId);
-        DebugConsole?.info('Firestore', `Initializing for user: ${userId}`);
+	
+	
+// Initialize Firebase and Firestore
+async init(userId) {
+    console.log('Initializing Firestore client for user:', userId);
+    DebugConsole?.info('Firestore', `Initializing for user: ${userId}`);
+    
+    try {
+        // Initialize Firebase (config from your Firebase console)
+        const firebaseConfig = {
+            apiKey: "AIzaSyD9US_D9RfsoKu9K_lVRak7c_0Ht9k-5Ak",
+            authDomain: "relay-725ff.firebaseapp.com",
+            projectId: "relay-725ff",
+            storageBucket: "relay-725ff.firebasestorage.app",
+            messagingSenderId: "954800431802",
+            appId: "1:954800431802:web:9d095fc106260878fb1883"
+        };
         
+        // Initialize Firebase if not already initialized
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        
+        this.db = firebase.firestore();
+        this.currentUser = userId;
+        
+        // Enable offline persistence - ONLY attempt once, ignore errors on reconnect
         try {
-            // Initialize Firebase (config from your Firebase console)
-const firebaseConfig = {
-    apiKey: "AIzaSyD9US_D9RfsoKu9K_lVRak7c_0Ht9k-5Ak",
-    authDomain: "relay-725ff.firebaseapp.com",
-    projectId: "relay-725ff",
-    storageBucket: "relay-725ff.firebasestorage.app",
-    messagingSenderId: "954800431802",
-    appId: "1:954800431802:web:9d095fc106260878fb1883"
-}; 
-
- 
-            // Initialize Firebase if not already initialized
-            if (!firebase.apps.length) {
-                firebase.initializeApp(firebaseConfig);
-            }
-            
-            this.db = firebase.firestore();
-            this.currentUser = userId;
-            
-            // Enable offline persistence for better reliability
             await this.db.enablePersistence({ experimentalForceOwningTab: true })
                 .catch(err => {
+                    // These errors are expected in certain scenarios
                     if (err.code === 'failed-precondition') {
                         DebugConsole?.warning('Firestore', 'Multiple tabs open, persistence disabled');
                     } else if (err.code === 'unimplemented') {
                         DebugConsole?.warning('Firestore', 'Browser doesn\'t support persistence');
+                    } else if (err.message && err.message.includes('already started')) {
+                        // This happens on reconnect - ignore
+                        console.log('Persistence already enabled (reconnect scenario)');
+                    } else {
+                        // Unexpected error
+                        throw err;
                     }
                 });
-            
-            // Set up listener for incoming messages
-            await this.setupMessageListener(userId);
-            
-            // Send initial presence/connection message
-            await this.sendToServer({
-                type: 'login',
-                username: userId,
-                isAdmin: CONFIG?.isAdmin || false,
-                timestamp: new Date().toISOString()
-            });
-            
-            this.isInitialized = true;
-            this.reconnectAttempts = 0;
-            
-            console.log('✅ Firestore client initialized');
-            DebugConsole?.success('Firestore', 'Client initialized successfully');
-            UIManager?.showStatus('Connected to server');
-            
-            return true;
-            
-        } catch (error) {
-            console.error('Failed to initialize Firestore:', error);
-            DebugConsole?.error('Firestore', `Init failed: ${error.message}`);
-            UIManager?.showError('Connection failed');
-            this.scheduleReconnect(userId);
-            return false;
+        } catch (persistError) {
+            // Log but continue - persistence is optional
+            console.log('Persistence setup skipped:', persistError.message);
         }
-    },
-    
+        
+        // Set up listener for incoming messages
+        await this.setupMessageListener(userId);
+        
+        // Send initial presence/connection message
+        await this.sendToServer({
+            type: 'login',
+            username: userId,
+            isAdmin: CONFIG?.isAdmin || false,
+            timestamp: new Date().toISOString()
+        });
+        
+        this.isInitialized = true;
+        this.reconnectAttempts = 0;
+        
+        console.log('✅ Firestore client initialized');
+        DebugConsole?.success('Firestore', 'Client initialized successfully');
+        UIManager?.showStatus('Connected to server');
+        
+        return true;
+        
+    } catch (error) {
+        console.error('Failed to initialize Firestore:', error);
+        DebugConsole?.error('Firestore', `Init failed: ${error.message}`);
+        UIManager?.showError('Connection failed');
+        this.scheduleReconnect(userId);
+        return false;
+    }
+}
+	
+	
+	
     // Set up Firestore listener for incoming messages
     async setupMessageListener(userId) {
         console.log('Setting up Firestore listener for:', userId);
