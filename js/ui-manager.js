@@ -348,115 +348,73 @@ forceHangupButtonReset() {
 },
     
     // ===== Display real network metrics =====
-    showNetworkMetrics(metrics) {
-        const indicator = CONFIG.elements.networkIndicator;
-        if (!indicator) return;
-        
-        // Create a detailed tooltip
-        const tooltip = `Latency: ${metrics.latency}ms
-Jitter: ${metrics.jitter}ms
-Packet Loss: ${metrics.packetLoss}%
-Bandwidth: ${metrics.bandwidth} Mbps
-Reliability: ${metrics.reliability}%`;
-        
-        // Choose color based on reliability
-        let color;
-        if (metrics.reliability > 80) color = '#44aa44';
-        else if (metrics.reliability > 60) color = '#88cc44';
-        else if (metrics.reliability > 40) color = '#ffaa44';
-        else if (metrics.reliability > 20) color = '#ff7744';
-        else color = '#ff4444';
-        
-        // Choose symbol based on connection type
-        let symbol = '📶';
-        if (metrics.bandwidth >= 50) symbol = '🚀'; // Fiber
-        else if (metrics.bandwidth >= 25) symbol = '📡'; // Fast broadband
-        else if (metrics.bandwidth >= 10) symbol = '📶'; // Standard broadband
-        else if (metrics.bandwidth >= 5) symbol = '📱'; // Mobile 4G
-        else symbol = '🐢'; // Slow connection
-        
-        // Display
-        indicator.innerHTML = `${symbol} ${metrics.latency}ms`;
-        indicator.style.color = color;
-        indicator.title = tooltip;
-        
-        // Also log to console occasionally for debugging
-        if (metrics.latency > 400) {
-            console.warn('⚠️ High latency detected:', metrics.latency, 'ms');
-            DebugConsole?.warning('Network', `High latency: ${metrics.latency}ms`);
-        }
-        if (metrics.packetLoss > 10) {
-            console.warn('⚠️ Packet loss detected:', metrics.packetLoss, '%');
-            DebugConsole?.warning('Network', `Packet loss: ${metrics.packetLoss}%`);
-        }
-        
-        // Log network metrics periodically
-        if (Math.random() < 0.1) { // ~10% chance to log
-            DebugConsole?.network('Network', `Latency: ${metrics.latency}ms, Jitter: ${metrics.jitter}ms, Loss: ${metrics.packetLoss}%, BW: ${metrics.bandwidth}Mbps`);
-        }
-    },
+	
+	
+ // ===== Display real network metrics - CLEAN AND SIMPLE =====
+showNetworkMetrics(metrics) {
+    const indicator = CONFIG.elements.networkIndicator;
+    if (!indicator) return;
+    
+    // Just show the latency in milliseconds - clean and simple
+    indicator.innerHTML = `${metrics.latency}ms`;
+    
+    // Plain text styling - no colors, no symbols
+    indicator.style.color = '#333333';
+    indicator.style.backgroundColor = '#f5f5f5';
+    indicator.style.fontWeight = 'normal';
+    indicator.style.opacity = '0.9';
+    
+    // Simple tooltip with all metrics for reference when hovering
+    indicator.title = `Latency: ${metrics.latency}ms | Jitter: ${metrics.jitter}ms | Loss: ${metrics.packetLoss}% | Bandwidth: ${metrics.bandwidth}Mbps`;
+},	
 	
 	// ===== Display WebRTC connection status =====
+	
+	// ===== Display WebRTC connection status - CLEAN AND SIMPLE =====
 updateWebRTCIndicator(state, rtt = 0) {
     const indicator = document.getElementById('webrtcIndicator');
     if (!indicator) return;
     
-    let icon = '🔄';
     let text = '';
-    let color = 'rgba(255,255,255,0.8)';
     let tooltip = '';
     
     switch (state) {
         case 'connected':
-            icon = '🔊';
-            text = rtt ? `${rtt}ms` : 'Connected';
-            if (rtt < 100) color = '#4CAF50';
-            else if (rtt < 300) color = '#FFC107';
-            else color = '#FF9800';
-            tooltip = `WebRTC Connected${rtt ? `, RTT: ${rtt}ms` : ''}`;
+            text = rtt ? `${rtt}ms` : 'connected';
+            tooltip = rtt ? `Round-trip time: ${rtt}ms` : 'WebRTC connected';
             break;
         case 'connecting':
-            icon = '⏳';
-            text = 'Connecting';
-            color = '#FFA500';
-            tooltip = 'WebRTC Connecting...';
+            text = 'connecting';
+            tooltip = 'WebRTC connecting...';
             break;
         case 'connected-no-rtt':
-            icon = '🔊';
-            text = 'Connected';
-            color = '#4CAF50';
-            tooltip = 'WebRTC Connected';
+            text = 'connected';
+            tooltip = 'WebRTC connected';
             break;
         case 'disconnected':
-            icon = '⚠️';
-            text = 'Disconnected';
-            color = '#FF9800';
-            tooltip = 'WebRTC Disconnected';
+            text = 'disconnected';
+            tooltip = 'WebRTC disconnected';
             break;
         case 'failed':
-            icon = '❌';
-            text = 'Failed';
-            color = '#F44336';
-            tooltip = 'WebRTC Failed';
+            text = 'failed';
+            tooltip = 'WebRTC connection failed';
             break;
         case 'closed':
-            icon = '🔴';
-            text = 'Closed';
-            color = '#9E9E9E';
-            tooltip = 'WebRTC Closed';
+            text = 'closed';
+            tooltip = 'WebRTC connection closed';
             break;
         default:
-            icon = '🔄';
-            text = 'Standby';
-            color = '#9E9E9E';
+            text = 'standby';
             tooltip = 'No active call';
     }
     
-    indicator.innerHTML = `${icon} ${text}`;
-    indicator.style.backgroundColor = color;
+    indicator.innerHTML = text;
+    indicator.style.color = '#333333';
+    indicator.style.backgroundColor = '#f5f5f5';
+    indicator.style.fontWeight = 'normal';
+    indicator.style.opacity = '0.9';
     indicator.title = tooltip;
 }
-
 
 };
 
