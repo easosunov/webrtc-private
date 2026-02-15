@@ -404,56 +404,45 @@ if (CONFIG.elements.remoteVideo) {
     // ===== TURN SERVER CONNECTIVITY TEST =====
 	
 	
-   // ===== TURN SERVER CONNECTIVITY TEST =====
-async testTurnServers() {
-    // Don't test if call is already connected
-    if (CONFIG.isInCall && CONFIG.peerConnection?.iceConnectionState === 'connected') {
-        return;
-    }
-    
-    console.log('🔍 Testing TURN server connectivity...');
-    
-    const servers = CONFIG.peerConfig?.iceServers || [];
-    const turnServers = servers.filter(s => s.urls?.includes('turn:'));
-    
-    if (turnServers.length === 0) {
-        console.log('⚠️ No TURN servers configured');
-        return;
-    }
-    
-    for (const server of turnServers) {
-        // Don't test if call is already connected
-        if (CONFIG.isInCall && CONFIG.peerConnection?.iceConnectionState === 'connected') {
+    async testTurnServers() {
+        console.log('🔍 Testing TURN server connectivity...');
+        
+        const servers = CONFIG.peerConfig?.iceServers || [];
+        const turnServers = servers.filter(s => s.urls?.includes('turn:'));
+        
+        if (turnServers.length === 0) {
+            console.log('⚠️ No TURN servers configured');
             return;
         }
         
-        const testPC = new RTCPeerConnection({ iceServers: [server] });
-        testPC.createDataChannel('test');
-        
-        let relayFound = false;
-        let testTimeout = setTimeout(() => {
-            if (!relayFound && !CONFIG.isInCall) {
-                // Only log as warning, not error, since TURN is optional
-                console.log(`ℹ️ TURN server timeout (normal if direct connection works): ${server.urls}`);
-                CONFIG.iceFailureReasons?.push(`TURN timeout: ${server.urls}`);
-                DebugConsole?.info('ICE', `TURN timeout (normal): ${server.urls}`);
-            }
-            testPC.close();
-        }, 3000);
-        
-        testPC.onicecandidate = (e) => {
-            if (e.candidate && e.candidate.candidate.includes('relay')) {
-                relayFound = true;
-                console.log(`✅ TURN server working: ${server.urls}`);
-                clearTimeout(testTimeout);
+        for (const server of turnServers) {
+            const testPC = new RTCPeerConnection({ iceServers: [server] });
+            testPC.createDataChannel('test');
+            
+            let relayFound = false;
+            let testTimeout = setTimeout(() => {
+                if (!relayFound) {
+                    console.error(`❌ TURN server unreachable: ${server.urls}`);
+                    CONFIG.iceFailureReasons.push(`TURN timeout: ${server.urls}`);
+                    DebugConsole?.error('ICE', `TURN timeout: ${server.urls}`);
+                }
                 testPC.close();
-            }
-        };
-        
-        await testPC.createOffer();
-        await testPC.setLocalDescription(testPC.localDescription);
-    }
-} 
+            }, 3000);
+            
+            testPC.onicecandidate = (e) => {
+                if (e.candidate && e.candidate.candidate.includes('relay')) {
+                    relayFound = true;
+                    console.log(`✅ TURN server working: ${server.urls}`);
+                    clearTimeout(testTimeout);
+                    testPC.close();
+                }
+            };
+            
+            await testPC.createOffer();
+            await testPC.setLocalDescription(testPC.localDescription);
+        }
+    },
+    
 	
 	
     // ===== ICE FAILURE ANALYSIS =====
