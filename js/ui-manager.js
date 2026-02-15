@@ -394,7 +394,70 @@ Reliability: ${metrics.reliability}%`;
         if (Math.random() < 0.1) { // ~10% chance to log
             DebugConsole?.network('Network', `Latency: ${metrics.latency}ms, Jitter: ${metrics.jitter}ms, Loss: ${metrics.packetLoss}%, BW: ${metrics.bandwidth}Mbps`);
         }
+    },
+	
+	// ===== Display WebRTC connection status =====
+updateWebRTCIndicator(state, rtt = 0) {
+    const indicator = document.getElementById('webrtcIndicator');
+    if (!indicator) return;
+    
+    let icon = '🔄';
+    let text = '';
+    let color = 'rgba(255,255,255,0.8)';
+    let tooltip = '';
+    
+    switch (state) {
+        case 'connected':
+            icon = '🔊';
+            text = rtt ? `${rtt}ms` : 'Connected';
+            if (rtt < 100) color = '#4CAF50';
+            else if (rtt < 300) color = '#FFC107';
+            else color = '#FF9800';
+            tooltip = `WebRTC Connected${rtt ? `, RTT: ${rtt}ms` : ''}`;
+            break;
+        case 'connecting':
+            icon = '⏳';
+            text = 'Connecting';
+            color = '#FFA500';
+            tooltip = 'WebRTC Connecting...';
+            break;
+        case 'connected-no-rtt':
+            icon = '🔊';
+            text = 'Connected';
+            color = '#4CAF50';
+            tooltip = 'WebRTC Connected';
+            break;
+        case 'disconnected':
+            icon = '⚠️';
+            text = 'Disconnected';
+            color = '#FF9800';
+            tooltip = 'WebRTC Disconnected';
+            break;
+        case 'failed':
+            icon = '❌';
+            text = 'Failed';
+            color = '#F44336';
+            tooltip = 'WebRTC Failed';
+            break;
+        case 'closed':
+            icon = '🔴';
+            text = 'Closed';
+            color = '#9E9E9E';
+            tooltip = 'WebRTC Closed';
+            break;
+        default:
+            icon = '🔄';
+            text = 'Standby';
+            color = '#9E9E9E';
+            tooltip = 'No active call';
     }
+    
+    indicator.innerHTML = `${icon} ${text}`;
+    indicator.style.backgroundColor = color;
+    indicator.title = tooltip;
+}
+
+
 };
 
 window.UIManager = UIManager;
