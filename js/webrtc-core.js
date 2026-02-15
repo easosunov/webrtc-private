@@ -1,4 +1,4 @@
-// js/webrtc-core.js - COMPLETE WITH TRICKLE ICE, ICE RESTART, AND FAILURE DIAGNOSTICS
+// js/webrtc-core.js - FIRESTORE VERSION WITH TRICKLE ICE, ICE RESTART, AND FAILURE DIAGNOSTICS
 const WebRTCManager = {
     // Camera properties
     hasMultipleCameras: false,
@@ -117,7 +117,8 @@ const WebRTCManager = {
                 
                 DebugConsole?.network('ICE', `${candidateType} candidate generated`);
                 
-                WebSocketClient.sendToServer({
+                // SEND VIA FIRESTORE
+                FirestoreClient.sendToServer({
                     type: 'ice-candidate',
                     targetSocketId: CONFIG.targetSocketId,
                     candidate: event.candidate
@@ -343,7 +344,8 @@ const WebRTCManager = {
                 
                 await CONFIG.peerConnection.setLocalDescription(offer);
                 
-                WebSocketClient.sendToServer({
+                // SEND VIA FIRESTORE
+                FirestoreClient.sendToServer({
                     type: 'offer',
                     targetSocketId: CONFIG.targetSocketId,
                     offer: offer,
@@ -478,7 +480,8 @@ const WebRTCManager = {
             console.log('✅ Local description set - Trickle ICE will send candidates as they arrive');
             DebugConsole?.network('WebRTC', 'Local description set');
             
-            WebSocketClient.sendToServer({
+            // SEND VIA FIRESTORE
+            FirestoreClient.sendToServer({
                 type: 'offer',
                 targetSocketId: CONFIG.targetSocketId,
                 offer: offer,
@@ -518,7 +521,8 @@ const WebRTCManager = {
             const answer = await CONFIG.peerConnection.createAnswer();
             await CONFIG.peerConnection.setLocalDescription(answer);
             
-            WebSocketClient.sendToServer({
+            // SEND VIA FIRESTORE
+            FirestoreClient.sendToServer({
                 type: 'answer',
                 targetSocketId: CONFIG.targetSocketId,
                 answer: answer,
