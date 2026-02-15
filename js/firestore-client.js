@@ -71,14 +71,7 @@ async init(userId) {
         // Set up listener for incoming messages
         await this.setupMessageListener(userId);
         
-        // Send initial presence/connection message
-        await this.sendToServer({
-            type: 'login',
-            username: userId,
-            isAdmin: CONFIG?.isAdmin || false,
-            timestamp: new Date().toISOString()
-        });
-        
+       
         this.isInitialized = true;
         this.reconnectAttempts = 0;
         
