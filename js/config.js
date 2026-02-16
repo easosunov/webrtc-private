@@ -8,7 +8,7 @@ const CallManager = {
     manualHangupControl: false,
     
     async callUser(userToCall, socketToCall) {
-        if (CONFIG.isInCall || CONFIG.isProcessingAnswer) {
+        if (CONFIG.isInCall || CONFIG.isProcessingAnswer) { 
             UIManager.showError('Already in a call');
             DebugConsole?.warning('Call', 'Already in a call');
             return;
@@ -613,3 +613,4 @@ handleUnexpectedDisconnect() {
 };
 
 window.CallManager = CallManager;
+
