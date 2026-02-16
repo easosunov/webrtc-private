@@ -1,50 +1,50 @@
-// js/config.js
+// js/config.js - ADD adminInCall property
 const CONFIG = {
-    // WebSocket connection
-    ws: null,
-    wsUrl: 'ws://' + window.location.hostname + ':8080',
+    // Connection settings
+    wsUrl: null,  // No longer used but kept for compatibility
+    peerConfig: null,
     
-    // User state
+    // User information
     myId: null,
     myUsername: null,
-    isAdmin: false,
-    adminSocketId: null,
+    mySocketId: null,
     
     // Call state
+    isInCall: false,
+    isInitiator: false,
+    targetSocketId: null,
+    
+    // Admin information
+    adminSocketId: null,
+    adminUsername: null,
+    adminInCall: false,  // ADD THIS - tracks if admin is currently in a call
+    isAdmin: false,
+    
+    // UI elements cache
+    elements: {},
+    
+    // Technical data
     peerConnection: null,
     localStream: null,
     remoteStream: null,
-    targetSocketId: null,
-    targetUsername: null,
-    isInCall: false,
-    isInitiator: false,
     iceCandidatesQueue: [],
-    incomingCallFrom: null,
     
-    // Permission state
+    // Media permissions
     hasMediaPermissions: false,
+    
+    // Processing flags
     isProcessingAnswer: false,
+    manualHangupControl: false,
     
-     manualHangupControl: false,
-	 
-	 // User list (for admin)
-    connectedUsers: [],
+    // ICE gathering stats
+    iceCandidateGathering: {},
+    iceFailureReasons: [],
     
-    // DOM Elements (will be initialized later)
-    elements: {}
+    // Environment
+    environment: {},
+    
+    // Firebase config
+    firebaseConfig: null
 };
 
-// Export for other modules
 window.CONFIG = CONFIG;
-
-// Helper to log state
-CONFIG.debug = function() {
-    console.log('=== CONFIG STATE ===');
-    console.log('User:', this.myUsername, this.myId);
-    console.log('Admin:', this.isAdmin, 'Admin socket:', this.adminSocketId);
-    console.log('Call:', this.isInCall ? 'Active' : 'Inactive', 
-                'Target:', this.targetUsername);
-    console.log('WebSocket:', this.ws ? `Connected (${this.ws.readyState})` : 'None');
-    console.log('PeerConnection:', this.peerConnection ? 'Exists' : 'None');
-    console.log('Media permissions:', this.hasMediaPermissions);
-};
