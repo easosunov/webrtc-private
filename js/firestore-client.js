@@ -68,6 +68,19 @@ const FirestoreClient = {
             // Start ping interval
             this.startPingInterval();
             
+			// In firestore-client.js, add to the init() method after initialization:
+this.startHeartbeat();
+
+// Add this method:
+startHeartbeat() {
+    // Send heartbeat every 30 seconds
+    setInterval(() => {
+        if (this.isInitialized && this.currentUser) {
+            this.sendToServer({ type: 'heartbeat' });
+        }
+    }, 30000);
+}
+			
             // Send initial ping
             setTimeout(() => {
                 if (this.isInitialized && this.currentUser) {
