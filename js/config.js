@@ -1,6 +1,22 @@
 // js/firestore-client.js - COMPLETE WITH ADMIN CALL STATE TRACKING
 console.log('🔥🔥🔥 firestore-client.js STARTED EXECUTION 🔥🔥🔥');
 console.log('Line 1 executed');
+
+// Ensure CONFIG exists (with fallback)
+if (typeof CONFIG === 'undefined') {
+    console.error('❌ CONFIG is not defined! config.js must load first');
+    // Create a temporary CONFIG to prevent cascading errors
+    window.CONFIG = window.CONFIG || {
+        isAdmin: false,
+        isInCall: false,
+        isInitiator: false,
+        adminSocketId: null,
+        adminInCall: false,
+        myId: null,
+        myUsername: null
+    };
+}
+
 const FirestoreClient = {
     // Firebase/Firestore properties
     db: null,
@@ -346,174 +362,177 @@ const FirestoreClient = {
         return 2;
     },
     
-	
-	handleMessage(message) {
-    const actualMessage = message.data || message;
-    
-    console.log('Processing message:', actualMessage.type, actualMessage);
-    
-    switch (actualMessage.type) {
-        case 'connected':
-            this.handleConnected(actualMessage);
-            break;
-            
-        case 'login-success':
-            AuthManager?.handleLoginSuccess(actualMessage);
-            break;
-            
-        case 'login-error':
-            UIManager?.showError(actualMessage.message);
-            UIManager?.showStatus('Login failed');
-            DebugConsole?.error('Auth', `Login failed: ${actualMessage.message}`);
-            break;
-            
-        case 'user-list':
-            UIManager?.updateUsersList(actualMessage.users);
-            break;
-            
-        case 'user-connected':
-            console.log(`👤 User connected: ${actualMessage.user?.username}`);
-            DebugConsole?.info('Users', `User connected: ${actualMessage.user?.username}`);
-            if (CONFIG?.isAdmin) {
-                setTimeout(() => this.sendToServer({ type: 'get-users' }), 100);
-            }
-            break;
-            
-        case 'user-disconnected':
-            console.log(`👤 User disconnected: ${actualMessage.username}`);
-            DebugConsole?.info('Users', `User disconnected: ${actualMessage.username}`);
-            if (CONFIG?.isAdmin) {
-                setTimeout(() => this.sendToServer({ type: 'get-users' }), 100);
-            }
-            break;
-            
-        case 'admin-online':
-            console.log(`📢 Admin is online: ${actualMessage.adminUsername}`);
-            DebugConsole?.success('Admin', `Admin is online (${actualMessage.adminUsername})`);
-            
-            CONFIG.adminUsername = actualMessage.adminUsername;
-            CONFIG.adminSocketId = actualMessage.adminSocketId;
-            CONFIG.adminInCall = actualMessage.adminInCall || false;
-            
-            UIManager?.showStatus(`Admin is online`);
-            UIManager?.updateCallButtons();
-            break;
-            
-        case 'admin-offline':
-            console.log('📢 Admin is offline');
-            DebugConsole?.warning('Admin', 'Admin is offline');
-            
-            CONFIG.adminSocketId = null;
-            CONFIG.adminInCall = false;
-            
-            UIManager?.showStatus('Admin is offline');
-            UIManager?.updateCallButtons();
-            break;
-            
-        case 'call-initiated':
-            DebugConsole?.call('Call', `Incoming call from ${actualMessage.callerName}`);
-            
-            if (CONFIG?.isAdmin) {
-                CONFIG.adminInCall = true;
-            }
-            
-            CallManager?.handleCallInitiated(actualMessage);
-            break;
-            
-        case 'call-initiated-confirm':
-            UIManager?.showStatus(`Calling ${actualMessage.targetName}...`);
-            DebugConsole?.call('Call', `Calling ${actualMessage.targetName}`);
-            break;
-            
-        case 'call-accepted':
-            DebugConsole?.success('Call', `Call accepted by ${actualMessage.calleeName}`);
-            
-            if (!CONFIG?.isAdmin && CONFIG?.isInitiator) {
-                CONFIG.adminInCall = true;
+    handleMessage(message) {
+        const actualMessage = message.data || message;
+        
+        console.log('Processing message:', actualMessage.type, actualMessage);
+        
+        // Ensure CONFIG exists (safety check)
+        if (typeof CONFIG === 'undefined') {
+            console.error('❌ CONFIG not defined in handleMessage');
+            return;
+        }
+        
+        switch (actualMessage.type) {
+            case 'connected':
+                this.handleConnected(actualMessage);
+                break;
+                
+            case 'login-success':
+                AuthManager?.handleLoginSuccess(actualMessage);
+                break;
+                
+            case 'login-error':
+                UIManager?.showError(actualMessage.message);
+                UIManager?.showStatus('Login failed');
+                DebugConsole?.error('Auth', `Login failed: ${actualMessage.message}`);
+                break;
+                
+            case 'user-list':
+                UIManager?.updateUsersList(actualMessage.users);
+                break;
+                
+            case 'user-connected':
+                console.log(`👤 User connected: ${actualMessage.user?.username}`);
+                DebugConsole?.info('Users', `User connected: ${actualMessage.user?.username}`);
+                if (CONFIG?.isAdmin) {
+                    setTimeout(() => this.sendToServer({ type: 'get-users' }), 100);
+                }
+                break;
+                
+            case 'user-disconnected':
+                console.log(`👤 User disconnected: ${actualMessage.username}`);
+                DebugConsole?.info('Users', `User disconnected: ${actualMessage.username}`);
+                if (CONFIG?.isAdmin) {
+                    setTimeout(() => this.sendToServer({ type: 'get-users' }), 100);
+                }
+                break;
+                
+            case 'admin-online':
+                console.log(`📢 Admin is online: ${actualMessage.adminUsername}`);
+                DebugConsole?.success('Admin', `Admin is online (${actualMessage.adminUsername})`);
+                
+                CONFIG.adminUsername = actualMessage.adminUsername;
+                CONFIG.adminSocketId = actualMessage.adminSocketId;
+                CONFIG.adminInCall = actualMessage.adminInCall || false;
+                
+                UIManager?.showStatus(`Admin is online`);
                 UIManager?.updateCallButtons();
-            }
-            
-            CallManager?.handleCallAccepted(actualMessage);
-            break;
-            
-        case 'call-rejected':
-            DebugConsole?.warning('Call', `Call rejected by ${actualMessage.rejecterName || 'remote user'}`);
-            
-            if (!CONFIG?.isAdmin && CONFIG?.isInitiator) {
+                break;
+                
+            case 'admin-offline':
+                console.log('📢 Admin is offline');
+                DebugConsole?.warning('Admin', 'Admin is offline');
+                
+                CONFIG.adminSocketId = null;
                 CONFIG.adminInCall = false;
+                
+                UIManager?.showStatus('Admin is offline');
                 UIManager?.updateCallButtons();
-            }
-            
-            if (typeof stopMonitoring !== 'undefined') stopMonitoring();
-            if (typeof hideConnectionStatus !== 'undefined') hideConnectionStatus();
-            CallManager?.handleCallRejected(actualMessage);
-            break;
-            
-        case 'call-ended':
-            DebugConsole?.call('Call', `Call ended by ${actualMessage.endedByName || 'remote user'}`);
-            
-            if (!CONFIG?.isAdmin) {
-                CONFIG.adminInCall = false;
-                UIManager?.updateCallButtons();
-            }
-            
-            if (typeof stopMonitoring !== 'undefined') stopMonitoring();
-            if (typeof hideConnectionStatus !== 'undefined') hideConnectionStatus();
-            CallManager?.handleCallEnded(actualMessage);
-            break;
-            
-        case 'offer':
-            DebugConsole?.network('WebRTC', 'Received ICE offer');
-            if (WebRTCManager && typeof WebRTCManager.handleOffer === 'function') {
-                WebRTCManager.handleOffer(actualMessage);
-            }
-            break;
-            
-        case 'answer':
-            DebugConsole?.network('WebRTC', 'Received ICE answer');
-            if (WebRTCManager && typeof WebRTCManager.handleAnswer === 'function') {
-                WebRTCManager.handleAnswer(actualMessage);
-            }
-            break;
-            
-        case 'ice-candidate':
-            DebugConsole?.network('WebRTC', 'Received ICE candidate');
-            if (WebRTCManager && typeof WebRTCManager.handleIceCandidate === 'function') {
-                WebRTCManager.handleIceCandidate(actualMessage);
-            }
-            break;
-            
-        case 'ping':
-            // Already handled separately
-            break;
-            
-        case 'pong':
-            console.log('🏓 Pong received');
-            DebugConsole?.network('Firestore', 'Pong received');
-            if (this.lastPingTime) {
-                const latency = Date.now() - this.lastPingTime;
-                this.updateNetworkQualityFromLatency(latency);
-            }
-            break;
-            
-        case 'error':
-            UIManager?.showError(actualMessage.message);
-            DebugConsole?.error('Server', actualMessage.message);
-            break;
-            
-        case 'call-ended-confirm':
-            console.log('📞 Call end confirmed');
-            DebugConsole?.call('Call', 'Call end confirmed');
-            break;
-            
-        default:
-            console.warn(`Unknown message type: ${actualMessage.type}`);
-            DebugConsole?.warning('Firestore', `Unknown message type: ${actualMessage.type}`);
-    }
-},
-	
-	
-	
+                break;
+                
+            case 'call-initiated':
+                DebugConsole?.call('Call', `Incoming call from ${actualMessage.callerName}`);
+                
+                if (CONFIG?.isAdmin) {
+                    CONFIG.adminInCall = true;
+                }
+                
+                CallManager?.handleCallInitiated(actualMessage);
+                break;
+                
+            case 'call-initiated-confirm':
+                UIManager?.showStatus(`Calling ${actualMessage.targetName}...`);
+                DebugConsole?.call('Call', `Calling ${actualMessage.targetName}`);
+                break;
+                
+            case 'call-accepted':
+                DebugConsole?.success('Call', `Call accepted by ${actualMessage.calleeName}`);
+                
+                if (!CONFIG?.isAdmin && CONFIG?.isInitiator) {
+                    CONFIG.adminInCall = true;
+                    UIManager?.updateCallButtons();
+                }
+                
+                CallManager?.handleCallAccepted(actualMessage);
+                break;
+                
+            case 'call-rejected':
+                DebugConsole?.warning('Call', `Call rejected by ${actualMessage.rejecterName || 'remote user'}`);
+                
+                if (!CONFIG?.isAdmin && CONFIG?.isInitiator) {
+                    CONFIG.adminInCall = false;
+                    UIManager?.updateCallButtons();
+                }
+                
+                if (typeof stopMonitoring !== 'undefined') stopMonitoring();
+                if (typeof hideConnectionStatus !== 'undefined') hideConnectionStatus();
+                CallManager?.handleCallRejected(actualMessage);
+                break;
+                
+            case 'call-ended':
+                DebugConsole?.call('Call', `Call ended by ${actualMessage.endedByName || 'remote user'}`);
+                
+                if (!CONFIG?.isAdmin) {
+                    CONFIG.adminInCall = false;
+                    UIManager?.updateCallButtons();
+                }
+                
+                if (typeof stopMonitoring !== 'undefined') stopMonitoring();
+                if (typeof hideConnectionStatus !== 'undefined') hideConnectionStatus();
+                CallManager?.handleCallEnded(actualMessage);
+                break;
+                
+            case 'offer':
+                DebugConsole?.network('WebRTC', 'Received ICE offer');
+                if (WebRTCManager && typeof WebRTCManager.handleOffer === 'function') {
+                    WebRTCManager.handleOffer(actualMessage);
+                }
+                break;
+                
+            case 'answer':
+                DebugConsole?.network('WebRTC', 'Received ICE answer');
+                if (WebRTCManager && typeof WebRTCManager.handleAnswer === 'function') {
+                    WebRTCManager.handleAnswer(actualMessage);
+                }
+                break;
+                
+            case 'ice-candidate':
+                DebugConsole?.network('WebRTC', 'Received ICE candidate');
+                if (WebRTCManager && typeof WebRTCManager.handleIceCandidate === 'function') {
+                    WebRTCManager.handleIceCandidate(actualMessage);
+                }
+                break;
+                
+            case 'ping':
+                // Already handled separately
+                break;
+                
+            case 'pong':
+                console.log('🏓 Pong received');
+                DebugConsole?.network('Firestore', 'Pong received');
+                if (this.lastPingTime) {
+                    const latency = Date.now() - this.lastPingTime;
+                    this.updateNetworkQualityFromLatency(latency);
+                }
+                break;
+                
+            case 'error':
+                UIManager?.showError(actualMessage.message);
+                DebugConsole?.error('Server', actualMessage.message);
+                break;
+                
+            case 'call-ended-confirm':
+                console.log('📞 Call end confirmed');
+                DebugConsole?.call('Call', 'Call end confirmed');
+                break;
+                
+            default:
+                console.warn(`Unknown message type: ${actualMessage.type}`);
+                DebugConsole?.warning('Firestore', `Unknown message type: ${actualMessage.type}`);
+        }
+    },
+    
     handleConnected(message) {
         console.log('Connected to signaling server');
         console.log('Socket ID:', message.socketId);
