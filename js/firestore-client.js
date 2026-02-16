@@ -1,22 +1,6 @@
-// js/firestore-client.js - COMPLETE WITH ADMIN CALL STATE TRACKING
+// js/firestore-client.js - COMPLETE WITH FIRESTORE RELAY AND CLIENT PINGS
 console.log('🔥🔥🔥 firestore-client.js STARTED EXECUTION 🔥🔥🔥');
 console.log('Line 1 executed');
-
-// Ensure CONFIG exists (with fallback)
-if (typeof CONFIG === 'undefined') {
-    console.error('❌ CONFIG is not defined! config.js must load first');
-    // Create a temporary CONFIG to prevent cascading errors
-    window.CONFIG = window.CONFIG || {
-        isAdmin: false,
-        isInCall: false,
-        isInitiator: false,
-        adminSocketId: null,
-        adminInCall: false,
-        myId: null,
-        myUsername: null
-    };
-}
-
 const FirestoreClient = {
     // Firebase/Firestore properties
     db: null,
@@ -24,25 +8,27 @@ const FirestoreClient = {
     currentUser: null,
     isInitialized: false,
     
-    // Network quality measurement properties
+    // Network quality measurement properties (preserved)
     pingTimes: [],
     lastPingTime: null,
     networkQuality: 'good',
     lastMetricsUpdate: 0,
     
-    // Reconnection handling
+    // Reconnection handling (Firestore handles this, but we track state)
     reconnectAttempts: 0,
     maxReconnectAttempts: 20,
     isIntentionalDisconnect: false,
     
-    // Ping interval
+    // ADDED: Ping interval property
     pingInterval: null,
     
+    // Initialize Firebase and Firestore
     async init(userId) {
         console.log('Initializing Firestore client for user:', userId);
         DebugConsole?.info('Firestore', `Initializing for user: ${userId}`);
         
         try {
+            // Initialize Firebase (config from your Firebase console)
             const firebaseConfig = {
                 apiKey: "AIzaSyD9US_D9RfsoKu9K_lVRak7c_0Ht9k-5Ak",
                 authDomain: "relay-725ff.firebaseapp.com",
@@ -52,6 +38,7 @@ const FirestoreClient = {
                 appId: "1:954800431802:web:9d095fc106260878fb1883"
             };
             
+            // Initialize Firebase if not already initialized
             if (!firebase.apps.length) {
                 firebase.initializeApp(firebaseConfig);
             }
@@ -59,38 +46,42 @@ const FirestoreClient = {
             this.db = firebase.firestore();
             this.currentUser = userId;
             
+            // Enable offline persistence - ONLY attempt once, ignore errors on reconnect
             try {
                 await this.db.enablePersistence({ experimentalForceOwningTab: true })
                     .catch(err => {
+                        // These errors are expected in certain scenarios
                         if (err.code === 'failed-precondition') {
                             DebugConsole?.warning('Firestore', 'Multiple tabs open, persistence disabled');
                         } else if (err.code === 'unimplemented') {
                             DebugConsole?.warning('Firestore', 'Browser doesn\'t support persistence');
                         } else if (err.message && err.message.includes('already started')) {
+                            // This happens on reconnect - ignore
                             console.log('Persistence already enabled (reconnect scenario)');
                         } else {
+                            // Unexpected error
                             throw err;
                         }
                     });
             } catch (persistError) {
+                // Log but continue - persistence is optional
                 console.log('Persistence setup skipped:', persistError.message);
             }
             
+            // Set up listener for incoming messages
             await this.setupMessageListener(userId);
             
             this.isInitialized = true;
             this.reconnectAttempts = 0;
-            
-            // Start ping interval
+            // Send an immediate ping to get initial latency
+			setTimeout(() => {
+				if (this.isInitialized && this.currentUser) {
+				console.log('🏓 Sending initial ping');
+				this.sendToServer({ type: 'ping' });
+				}
+			}, 1000);
+            // ADDED: Start ping interval after successful initialization
             this.startPingInterval();
-            
-            // Send initial ping
-            setTimeout(() => {
-                if (this.isInitialized && this.currentUser) {
-                    console.log('🏓 Sending initial ping');
-                    this.sendToServer({ type: 'ping' });
-                }
-            }, 1000);
             
             console.log('✅ Firestore client initialized');
             DebugConsole?.success('Firestore', 'Client initialized successfully');
@@ -107,14 +98,17 @@ const FirestoreClient = {
         }
     },
     
+    // Set up Firestore listener for incoming messages
     async setupMessageListener(userId) {
         console.log('Setting up Firestore listener for:', userId);
         
+        // Query for messages destined for this user
         const messagesRef = this.db.collection('relay');
         const q = messagesRef
             .where('to', '==', userId)
             .orderBy('timestamp', 'asc');
         
+        // Set up real-time listener
         this.unsubscribe = q.onSnapshot((snapshot) => {
             snapshot.docChanges().forEach((change) => {
                 if (change.type === 'added') {
@@ -124,16 +118,19 @@ const FirestoreClient = {
                     console.log('📨 Received from Firestore:', message.type, message);
                     DebugConsole?.network('Firestore', `Received ${message.type}`);
                     
+                    // Handle pings specially for latency measurement
                     if (message.type === 'ping') {
                         this.handlePing(message);
                     }
                     
+                    // Pass to message handler (preserves all existing logic)
                     this.handleMessage(message);
                     
-                    // Delete after processing
-                    doc.ref.delete().catch(err => {
-                        DebugConsole?.warning('Firestore', `Failed to delete message: ${err.message}`);
-                    });
+                    // Delete after processing (optional - keeps collection clean)
+                    // Uncomment if you want auto-cleanup
+                    // doc.ref.delete().catch(err => {
+                    //     DebugConsole?.warning('Firestore', `Failed to delete message: ${err.message}`);
+                    // });
                 }
             });
         }, (error) => {
@@ -145,10 +142,14 @@ const FirestoreClient = {
             }
         });
         
+        // Also listen for server presence (admin online/offline)
         this.setupPresenceListener();
     },
     
+    // Listen for server/admin presence
     setupPresenceListener() {
+        // You could have a special "presence" document in Firestore
+        // that the server updates periodically
         const presenceRef = this.db.collection('status').doc('admin');
         
         this.presenceUnsubscribe = presenceRef.onSnapshot((doc) => {
@@ -158,8 +159,7 @@ const FirestoreClient = {
                     this.handleAdminOnline({
                         type: 'admin-online',
                         adminUsername: data.username,
-                        adminSocketId: data.socketId || 'firestore-admin',
-                        adminInCall: data.inCall || false
+                        adminSocketId: data.socketId || 'firestore-admin'
                     });
                 } else {
                     this.handleAdminOffline({
@@ -170,6 +170,7 @@ const FirestoreClient = {
         });
     },
     
+    // Send message via Firestore
     async sendToServer(message) {
         if (!this.db || !this.currentUser) {
             console.warn('Cannot send: Firestore not initialized');
@@ -182,24 +183,28 @@ const FirestoreClient = {
             console.log('📤 Sending via Firestore:', message.type, message);
             DebugConsole?.network('Firestore', `Sending ${message.type}`);
             
+            // Add timestamp for latency measurement if this is a ping
             if (message.type === 'ping') {
                 this.lastPingTime = Date.now();
             }
             
+            // Prepare the relay message
             const relayMessage = {
-                to: 'railway-server',
+                to: 'railway-server',  // All messages go to server first
                 from: this.currentUser,
                 type: message.type,
-                data: message,
+                data: message,          // Original message preserved
                 timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                 messageId: this.generateMessageId(),
                 requiresResponse: ['offer', 'answer', 'ice-candidate'].includes(message.type)
             };
             
+            // Add callId if present
             if (message.callId) {
                 relayMessage.callId = message.callId;
             }
             
+            // Write to Firestore
             await this.db.collection('relay').add(relayMessage);
             
             return true;
@@ -217,18 +222,23 @@ const FirestoreClient = {
         }
     },
     
+    // Generate unique message ID for tracking
     generateMessageId() {
         return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     },
     
+    // Handle ping specially for latency measurement
     handlePing(message) {
         console.log('🏓 Ping received from server via Firestore');
         DebugConsole?.network('Firestore', 'Ping received');
         
+        // Send pong response
         this.sendToServer({ type: 'pong' });
     },
     
+    // ADDED: Start periodic ping interval
     startPingInterval() {
+        // Clear any existing interval
         if (this.pingInterval) {
             clearInterval(this.pingInterval);
             this.pingInterval = null;
@@ -237,15 +247,17 @@ const FirestoreClient = {
         console.log('⏰ Starting ping interval (30 seconds)');
         DebugConsole?.network('Firestore', 'Starting ping interval');
         
+        // Send ping every 30 seconds
         this.pingInterval = setInterval(() => {
             if (this.isInitialized && this.currentUser) {
                 console.log('🏓 Sending client ping');
                 DebugConsole?.network('Firestore', 'Sending client ping');
                 this.sendToServer({ type: 'ping' });
             }
-        }, 30000);
+        }, 30000); // 30 seconds
     },
     
+    // Schedule reconnection attempt
     scheduleReconnect(userId) {
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
             console.error('Max reconnection attempts reached');
@@ -266,7 +278,9 @@ const FirestoreClient = {
         }, delay);
     },
     
+    // Clean up listeners
     async cleanup() {
+        // ADDED: Clear ping interval
         if (this.pingInterval) {
             clearInterval(this.pingInterval);
             this.pingInterval = null;
@@ -283,10 +297,12 @@ const FirestoreClient = {
         }
     },
     
+    // Disconnect intentionally
     async disconnect() {
         this.isIntentionalDisconnect = true;
         DebugConsole?.info('Firestore', 'Intentional disconnect');
         
+        // Send logout message
         await this.sendToServer({
             type: 'logout',
             username: this.currentUser
@@ -299,14 +315,22 @@ const FirestoreClient = {
         UIManager?.showStatus('Disconnected');
     },
     
+    // ===== PRESERVED METHODS FROM ORIGINAL =====
+    // All these methods remain EXACTLY as they were
+    // Only change: they now receive messages from Firestore instead of WebSocket
+    
+    // Network quality measurement (preserved)
     updateNetworkQualityFromLatency(latency) {
+        // Keep last 10 ping times for better accuracy
         this.pingTimes.push(latency);
         if (this.pingTimes.length > 10) {
             this.pingTimes.shift();
         }
         
+        // Calculate average latency
         const avgLatency = this.pingTimes.reduce((a, b) => a + b, 0) / this.pingTimes.length;
         
+        // Determine quality
         let quality;
         if (avgLatency < 100) {
             quality = 'excellent';
@@ -318,12 +342,14 @@ const FirestoreClient = {
             quality = 'poor';
         }
         
+        // Only update if changed
         if (quality !== this.networkQuality) {
             this.networkQuality = quality;
             console.log(`📊 Network quality: ${quality} (${Math.round(avgLatency)}ms)`);
             DebugConsole?.network('Network', `Quality: ${quality}, Latency: ${Math.round(avgLatency)}ms`);
         }
         
+        // Calculate comprehensive metrics
         const metrics = {
             latency: Math.round(avgLatency),
             jitter: this.calculateJitter(),
@@ -332,8 +358,9 @@ const FirestoreClient = {
             reliability: Math.max(0, Math.min(100, Math.round(100 - (avgLatency / 10) - (this.reconnectAttempts * 2))))
         };
         
+        // Update UI with metrics (throttled to avoid flicker)
         const now = Date.now();
-        if (now - this.lastMetricsUpdate > 2000) {
+        if (now - this.lastMetricsUpdate > 2000) { // Update every 2 seconds max
             this.lastMetricsUpdate = now;
             
             if (UIManager?.showNetworkMetrics) {
@@ -345,6 +372,7 @@ const FirestoreClient = {
         }
     },
     
+    // Calculate jitter (preserved)
     calculateJitter() {
         if (this.pingTimes.length < 2) return 0;
         let sumDiff = 0;
@@ -354,6 +382,7 @@ const FirestoreClient = {
         return Math.round(sumDiff / (this.pingTimes.length - 1));
     },
     
+    // Bandwidth estimate (preserved)
     getBandwidthEstimate(latency) {
         if (latency < 50) return 50;
         if (latency < 100) return 25;
@@ -362,16 +391,12 @@ const FirestoreClient = {
         return 2;
     },
     
+    // COMPLETE ORIGINAL handleMessage METHOD - PRESERVED EXACTLY
     handleMessage(message) {
+        // If message is wrapped in Firestore envelope, extract data
         const actualMessage = message.data || message;
         
         console.log('Processing message:', actualMessage.type, actualMessage);
-        
-        // Ensure CONFIG exists (safety check)
-        if (typeof CONFIG === 'undefined') {
-            console.error('❌ CONFIG not defined in handleMessage');
-            return;
-        }
         
         switch (actualMessage.type) {
             case 'connected':
@@ -409,35 +434,15 @@ const FirestoreClient = {
                 break;
                 
             case 'admin-online':
-                console.log(`📢 Admin is online: ${actualMessage.adminUsername}`);
-                DebugConsole?.success('Admin', `Admin is online (${actualMessage.adminUsername})`);
-                
-                CONFIG.adminUsername = actualMessage.adminUsername;
-                CONFIG.adminSocketId = actualMessage.adminSocketId;
-                CONFIG.adminInCall = actualMessage.adminInCall || false;
-                
-                UIManager?.showStatus(`Admin is online`);
-                UIManager?.updateCallButtons();
+                this.handleAdminOnline(actualMessage);
                 break;
                 
             case 'admin-offline':
-                console.log('📢 Admin is offline');
-                DebugConsole?.warning('Admin', 'Admin is offline');
-                
-                CONFIG.adminSocketId = null;
-                CONFIG.adminInCall = false;
-                
-                UIManager?.showStatus('Admin is offline');
-                UIManager?.updateCallButtons();
+                this.handleAdminOffline(actualMessage);
                 break;
                 
             case 'call-initiated':
                 DebugConsole?.call('Call', `Incoming call from ${actualMessage.callerName}`);
-                
-                if (CONFIG?.isAdmin) {
-                    CONFIG.adminInCall = true;
-                }
-                
                 CallManager?.handleCallInitiated(actualMessage);
                 break;
                 
@@ -448,23 +453,11 @@ const FirestoreClient = {
                 
             case 'call-accepted':
                 DebugConsole?.success('Call', `Call accepted by ${actualMessage.calleeName}`);
-                
-                if (!CONFIG?.isAdmin && CONFIG?.isInitiator) {
-                    CONFIG.adminInCall = true;
-                    UIManager?.updateCallButtons();
-                }
-                
                 CallManager?.handleCallAccepted(actualMessage);
                 break;
                 
             case 'call-rejected':
                 DebugConsole?.warning('Call', `Call rejected by ${actualMessage.rejecterName || 'remote user'}`);
-                
-                if (!CONFIG?.isAdmin && CONFIG?.isInitiator) {
-                    CONFIG.adminInCall = false;
-                    UIManager?.updateCallButtons();
-                }
-                
                 if (typeof stopMonitoring !== 'undefined') stopMonitoring();
                 if (typeof hideConnectionStatus !== 'undefined') hideConnectionStatus();
                 CallManager?.handleCallRejected(actualMessage);
@@ -472,12 +465,6 @@ const FirestoreClient = {
                 
             case 'call-ended':
                 DebugConsole?.call('Call', `Call ended by ${actualMessage.endedByName || 'remote user'}`);
-                
-                if (!CONFIG?.isAdmin) {
-                    CONFIG.adminInCall = false;
-                    UIManager?.updateCallButtons();
-                }
-                
                 if (typeof stopMonitoring !== 'undefined') stopMonitoring();
                 if (typeof hideConnectionStatus !== 'undefined') hideConnectionStatus();
                 CallManager?.handleCallEnded(actualMessage);
@@ -505,7 +492,7 @@ const FirestoreClient = {
                 break;
                 
             case 'ping':
-                // Already handled separately
+                // Already handled separately, but keep for compatibility
                 break;
                 
             case 'pong':
@@ -525,7 +512,7 @@ const FirestoreClient = {
             case 'call-ended-confirm':
                 console.log('📞 Call end confirmed');
                 DebugConsole?.call('Call', 'Call end confirmed');
-                break;
+                break;                
                 
             default:
                 console.warn(`Unknown message type: ${actualMessage.type}`);
@@ -533,6 +520,7 @@ const FirestoreClient = {
         }
     },
     
+    // Original handler methods preserved
     handleConnected(message) {
         console.log('Connected to signaling server');
         console.log('Socket ID:', message.socketId);
@@ -546,7 +534,6 @@ const FirestoreClient = {
         if (CONFIG) {
             CONFIG.adminSocketId = message.adminSocketId;
             CONFIG.adminUsername = message.adminUsername;
-            CONFIG.adminInCall = message.adminInCall || false;
         }
         
         UIManager?.showStatus(`Admin is online`);
@@ -559,10 +546,7 @@ const FirestoreClient = {
     handleAdminOffline(message) {
         console.log('📢 Admin is offline');
         DebugConsole?.warning('Admin', 'Admin is offline');
-        if (CONFIG) {
-            CONFIG.adminSocketId = null;
-            CONFIG.adminInCall = false;
-        }
+        if (CONFIG) CONFIG.adminSocketId = null;
         
         UIManager?.showStatus('Admin is offline');
         
@@ -572,4 +556,5 @@ const FirestoreClient = {
     }
 };
 
+// Export for use
 window.FirestoreClient = FirestoreClient;
