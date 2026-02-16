@@ -10,16 +10,11 @@
     
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     
-
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-
   <!-- Modular JavaScript files - CORRECT ORDER -->
 <script src="./js/config.js"></script>
 <script src="./js/ui-manager.js"></script>
 <script src="./js/auth-manager.js"></script>
-<!-- ===== CHANGED: websocket-client.js → firestore-client.js ===== -->
-<script src="./js/firestore-client.js?v=<?= time() ?>"></script>
+<script src="./js/websocket-client.js"></script>
 <script src="./js/webrtc-core.js"></script>      <!-- WebRTC core BEFORE call manager -->
 <script src="./js/call-manager.js"></script>      <!-- Call manager uses WebRTCManager -->
 
