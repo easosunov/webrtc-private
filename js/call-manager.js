@@ -1,4 +1,3 @@
-
 // js/call-manager.js - COMPLETE FIXED VERSION WITH IMMEDIATE HANGUP
 const CallManager = {
     // Add audio element for notification sound
