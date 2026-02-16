@@ -1,10 +1,7 @@
-// js/auth-manager.js - FIRESTORE VERSION WITH VIDEO STABILITY AND LOGIN STATE TRACKING
+// js/auth-manager.js - COMPLETE FIXED VERSION WITH VIDEO STABILITY
 const AuthManager = {
     // Add this flag to prevent multiple simultaneous requests
     permissionsRequestInProgress: false,
-    
-    // ADD THIS: Track login state to prevent race conditions
-    loginInProgress: false,
     
     async login(accessCode) {
         console.log('Login function called with:', accessCode);
@@ -15,54 +12,18 @@ const AuthManager = {
             return;
         }
         
-        // ADD THIS: Prevent multiple simultaneous login attempts
-        if (this.loginInProgress) {
-            console.log('Login already in progress, ignoring duplicate attempt');
-            UIManager.showStatus('Login already in progress...');
-            return;
-        }
-        
         console.log('Login attempt with access code:', accessCode);
         UIManager.showStatus('Logging in...');
         
-        // Set login in progress flag
-        this.loginInProgress = true;
-        
-        // Check if FirestoreClient is available
-        if (!window.FirestoreClient) {
-            console.error('FirestoreClient is NOT defined!');
-            UIManager.showError('System not ready - please refresh');
-            this.loginInProgress = false;
-            return;
-        }
-        
-        try {
-            // STEP 1: Initialize Firestore client with username (access code)
-            UIManager.showStatus('Connecting to server...');
-            await FirestoreClient.init(accessCode);
-            
-            // STEP 2: Send login message via Firestore
-            UIManager.showStatus('Authenticating...');
-            FirestoreClient.sendToServer({
-                type: 'login',
-                accessCode: accessCode,
-                timestamp: Date.now()
-            });
-            
-            // Note: The actual login success will come via Firestore listener
-            // and be handled by handleLoginSuccess()
-            
-        } catch (error) {
-            console.error('Login failed:', error);
-            UIManager.showError(`Login failed: ${error.message}`);
-            this.loginInProgress = false; // Reset flag on error
-        }
+        // Send login request (server expects 'accessCode' field)
+        WebSocketClient.sendToServer({
+            type: 'login',
+            accessCode: accessCode,
+            timestamp: Date.now()
+        });
     },
     
     handleLoginSuccess(data) {
-        // Reset login in progress flag
-        this.loginInProgress = false;
-        
         CONFIG.myId = data.userId;
         CONFIG.myUsername = data.username;
         CONFIG.isAdmin = data.isAdmin || false;
@@ -76,7 +37,7 @@ const AuthManager = {
         
         // Request user list if admin
         if (CONFIG.isAdmin) {
-            setTimeout(() => FirestoreClient.sendToServer({ type: 'get-users' }), 500);
+            setTimeout(() => WebSocketClient.sendToServer({ type: 'get-users' }), 500);
         }
         
         // Check permissions
@@ -87,14 +48,7 @@ const AuthManager = {
     },
     
     logout() {
-        // Send logout message via Firestore
-        FirestoreClient.sendToServer({ type: 'logout' });
-        
-        // Disconnect Firestore client
-        if (FirestoreClient && FirestoreClient.disconnect) {
-            FirestoreClient.disconnect();
-        }
-        
+        WebSocketClient.sendToServer({ type: 'logout' });
         CallManager.cleanupCall();
         
         if (CONFIG.localStream) {
@@ -128,9 +82,6 @@ const AuthManager = {
         }
         
         UIManager.showStatus('Logged out');
-        
-        // Reset login flag
-        this.loginInProgress = false;
     },
     
     async checkPermissions() {
@@ -228,5 +179,4 @@ const AuthManager = {
     }
 };
 
-// Export for use
 window.AuthManager = AuthManager;
