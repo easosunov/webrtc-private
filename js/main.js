@@ -1,6 +1,6 @@
-// js/main.js - FIRESTORE VERSION
+// js/main.js
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('WebRTC Client Initializing with Firestore...');
+    console.log('WebRTC Client Initializing...');
     
     try {
         // 1. Initialize UI
@@ -9,13 +9,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 2. Load ICE servers (Twilio via Cloudflare Worker)
         await loadIceServers();
         
-        // 3. Configure Firestore (replaces configureSignalingUrl)
-        configureFirestore();
+        // 3. Configure signaling server URL
+        configureSignalingUrl();
         
         // 4. Request media permissions
         await AuthManager.checkPermissions();
         
-        // 5. NO AUTO-CONNECT - Firestore connects during login
+        // 5. Connect to signaling server
+        await WebSocketClient.connect();
         
         // 6. Initialize resolution components
         if (window.ResolutionManager) {
@@ -25,10 +26,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             ResolutionUI.init();
         }
         
-        // 7. Initialize camera detection
-        if (window.WebRTCManager && WebRTCManager.initCameras) {
-            await WebRTCManager.initCameras();
-        }
+        
         
         // 8. Setup global functions
         setupGlobalFunctions();
@@ -40,22 +38,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         handleInitializationError(error);
     }
 });
-
-// ========== FIREBASE/FIRESTORE CONFIGURATION ==========
-function configureFirestore() {
-    // Firebase configuration - REPLACE WITH YOUR ACTUAL CONFIG
-    const firebaseConfig = {
-        apiKey: "AIzaSyD9US_D9RfsoKu9K_lVRak7c_0Ht9k-5Ak", // Get from Firebase console
-        authDomain: "relay.firebaseapp.com",
-        projectId: "relay",
-        storageBucket: "relay.appspot.com",
-        messagingSenderId: "954800431802",
-        appId: "1:954800431802:web:9d095fc106260878fb1883"
-    };
-    
-    CONFIG.firebaseConfig = firebaseConfig;
-    console.log('✓ Firestore configured for project:', firebaseConfig.projectId);
-}
 
 // ========== ICE SERVER CONFIGURATION ==========
 async function loadIceServers() {
@@ -85,70 +67,13 @@ async function loadIceServers() {
             }
             
             if (iceServers && iceServers.length > 0) {
-                // Extract Twilio credentials from the first TURN server
-                const turnServer = iceServers.find(s => s.urls?.includes('turn:'));
-                const twilioUsername = turnServer?.username;
-                const twilioPassword = turnServer?.credential;
-                
-                // Add regional Twilio TURN servers for better geographic routing
-                const regionalTurnServers = [];
-                
-                if (twilioUsername && twilioPassword) {
-                    regionalTurnServers.push(
-                        {
-                            urls: 'turn:us-east.turn.twilio.com:3478?transport=udp',
-                            username: twilioUsername,
-                            credential: twilioPassword
-                        },
-                        {
-                            urls: 'turn:us-east.turn.twilio.com:3478?transport=tcp',
-                            username: twilioUsername,
-                            credential: twilioPassword
-                        },
-                        {
-                            urls: 'turn:us-west.turn.twilio.com:3478?transport=udp',
-                            username: twilioUsername,
-                            credential: twilioPassword
-                        },
-                        {
-                            urls: 'turn:us-west.turn.twilio.com:3478?transport=tcp',
-                            username: twilioUsername,
-                            credential: twilioPassword
-                        },
-                        {
-                            urls: 'turn:eu.turn.twilio.com:3478?transport=udp',
-                            username: twilioUsername,
-                            credential: twilioPassword
-                        },
-                        {
-                            urls: 'turn:eu.turn.twilio.com:3478?transport=tcp',
-                            username: twilioUsername,
-                            credential: twilioPassword
-                        },
-                        {
-                            urls: 'turn:asia.turn.twilio.com:3478?transport=udp',
-                            username: twilioUsername,
-                            credential: twilioPassword
-                        },
-                        {
-                            urls: 'turn:asia.turn.twilio.com:3478?transport=tcp',
-                            username: twilioUsername,
-                            credential: twilioPassword
-                        }
-                    );
-                }
-                
-                // Start with original servers, add regionals
-                const allServers = [...iceServers, ...regionalTurnServers];
-                
                 CONFIG.peerConfig = {
-                    iceServers: allServers,
+                    iceServers: iceServers,
                     iceCandidatePoolSize: 10,
                     iceTransportPolicy: 'all'
                 };
                 CONFIG.iceSource = source.name;
-                console.log(`✓ ICE servers from ${source.name}: ${iceServers.length} servers + ${regionalTurnServers.length} regional variants`);
-                console.log('📡 Using Twilio TURN with regional endpoints for better geographic routing');
+                console.log(`✓ ICE servers from ${source.name}: ${iceServers.length} servers`);
                 return;
             }
         } catch (error) {
@@ -157,8 +82,8 @@ async function loadIceServers() {
         }
     }
     
-    // Fallback: Public STUN servers only
-    console.log('Using public STUN fallback only (TURN unavailable)');
+    // Fallback: Public STUN servers
+    console.log('Using public STUN fallback');
     CONFIG.peerConfig = {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
@@ -169,7 +94,7 @@ async function loadIceServers() {
         ],
         iceCandidatePoolSize: 10
     };
-    CONFIG.iceSource = 'public-stun-only';
+    CONFIG.iceSource = 'public-stun';
 }
 
 async function getDirectTwilioServers() {
@@ -181,8 +106,45 @@ async function getDirectTwilioServers() {
     return data.iceServers;
 }
 
-// ========== SIGNALING SERVER CONFIGURATION (REMOVED - REPLACED BY FIRESTORE) ==========
-// configureSignalingUrl() function REMOVED - replaced by configureFirestore()
+// ========== SIGNALING SERVER CONFIGURATION ==========
+function configureSignalingUrl() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const hostname = window.location.hostname;
+    
+    // Auto-detect environment and configure accordingly
+    if (hostname.includes('github.io')) {
+        // GitHub Pages - use cloud signaling
+        CONFIG.wsUrl = 'wss://charismatic-hope-production.up.railway.app'; // ← Set this after deployment
+        console.log('GitHub Pages environment: Cloud signaling required');
+        
+        // Dynamic fallback: Try to discover local server
+        discoverLocalSignalingServer();
+        
+    } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        // Local development
+        CONFIG.wsUrl = `ws://${hostname}:8080`;
+        console.log('Local development: Using local signaling');
+        
+    } else if (/^192\.168\.|^10\.|^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname)) {
+        // Local network IP
+        CONFIG.wsUrl = `ws://${hostname}:8080`;
+        console.log('Local network: Using direct signaling');
+        
+    } else {
+        // Unknown/other domain - assume HTTPS and cloud signaling
+        CONFIG.wsUrl = `wss://${hostname}:8080`;
+        console.log('Custom domain: Attempting secure signaling');
+    }
+}
+
+function discoverLocalSignalingServer() {
+    // Attempt to find local server for fallback
+    const localIp = localStorage.getItem('localServerIp');
+    if (localIp) {
+        CONFIG.fallbackWsUrl = `ws://${localIp}:8080`;
+        console.log(`Local server fallback: ${CONFIG.fallbackWsUrl}`);
+    }
+}
 
 // ========== ERROR HANDLING ==========
 function handleInitializationError(error) {
@@ -194,7 +156,7 @@ function handleInitializationError(error) {
     const errorMap = {
         'Failed to fetch': 'Network error. Check internet connection.',
         'Permission denied': 'Microphone/camera access required.',
-        'AbortError': 'Connection timeout. Check your connection.'
+        'AbortError': 'Connection timeout. Server may be offline.'
     };
     
     const friendlyMsg = errorMap[errorMsg] || `Error: ${errorMsg}`;
@@ -202,19 +164,12 @@ function handleInitializationError(error) {
     
     // Set minimal configuration for recovery
     CONFIG.peerConfig = CONFIG.peerConfig || {
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            {
-                urls: 'turn:openrelay.metered.ca:443',
-                username: 'openrelayproject',
-                credential: 'openrelayproject'
-            }
-        ]
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     };
     
     // Show retry button
     setTimeout(() => {
-        if (!CONFIG.firebaseInitialized) {
+        if (!CONFIG.ws || CONFIG.ws.readyState !== WebSocket.OPEN) {
             UIManager.showStatus('Click "Retry Connection" to try again');
         }
     }, 2000);
@@ -278,22 +233,17 @@ function setupGlobalFunctions() {
         }
     };
     
-    // Connection management - UPDATED for Firestore
+    // Connection management
     window.retryConnection = async function() {
         UIManager.showStatus('Retrying connection...');
         
-        if (FirestoreClient && FirestoreClient.isInitialized) {
-            await FirestoreClient.disconnect();
+        if (CONFIG.ws && CONFIG.ws.readyState === WebSocket.OPEN) {
+            CONFIG.ws.close();
         }
         
         try {
-            // We need username to reconnect - check if user was logged in
-            if (CONFIG.myUsername) {
-                await FirestoreClient.init(CONFIG.myUsername);
-                UIManager.showStatus('Reconnected successfully');
-            } else {
-                UIManager.showStatus('Ready to login');
-            }
+            await WebSocketClient.connect();
+            UIManager.showStatus('Reconnected successfully');
         } catch (error) {
             UIManager.showError(`Reconnection failed: ${error.message}`);
         }
@@ -335,7 +285,7 @@ function setupGlobalFunctions() {
         setTimeout(() => pc.close(), 3000);
     };
     
-    // Camera switching function
+    // Camera switching function (NEW)
     window.switchCamera = async function() {
         if (window.WebRTCManager && WebRTCManager.switchCamera) {
             await WebRTCManager.switchCamera();
@@ -345,23 +295,21 @@ function setupGlobalFunctions() {
         }
     };
     
-    // Debug function - UPDATED for Firestore
+    // Debug function
     window.debug = function() {
         console.log('=== DEBUG INFO ===');
         console.log('ICE Source:', CONFIG.iceSource);
-        console.log('Firestore:', FirestoreClient?.isInitialized ? 'Connected' : 'Not connected');
+        console.log('WebSocket:', CONFIG.ws ? CONFIG.ws.readyState : 'Not connected');
         console.log('User:', CONFIG.myUsername || 'Not logged in');
         console.log('In Call:', CONFIG.isInCall);
         console.log('Admin Online:', !!CONFIG.adminSocketId);
-        console.log('Connected Users:', CONFIG.connectedUsers?.length || 0);
+        console.log('Connected Users:', CONFIG.connectedUsers.length);
         console.log('Has Multiple Cameras:', window.WebRTCManager?.hasMultipleCameras || false);
         console.log('Current Camera:', window.WebRTCManager?.currentFacingMode || 'unknown');
-        console.log('ICE Servers:', CONFIG.peerConfig?.iceServers?.length || 0);
-        console.log('Firebase Project:', CONFIG.firebaseConfig?.projectId || 'Not configured');
         console.log('==================');
     };
     
-    // ========== STATUS MONITORING HOOKS ==========
+    // ========== STATUS MONITORING HOOKS - ADDED SECTION ==========
     // Ensure our monitoring hooks are connected after setup
     window.ensureStatusMonitoring = function() {
         if (typeof testConnectionStatus !== 'undefined') {
@@ -396,14 +344,13 @@ function setupGlobalFunctions() {
     };
 }
 
-// ========== AUTO-RECONNECT - UPDATED FOR FIRESTORE ==========
+// ========== AUTO-RECONNECT ==========
 (function setupAutoReconnect() {
     let reconnectAttempts = 0;
     const maxReconnectDelay = 10000; // 10 seconds
     
     function scheduleReconnect() {
         if (CONFIG.isInCall) return; // Don't reconnect during active call
-        if (!CONFIG.myUsername) return; // Don't reconnect if not logged in
         
         reconnectAttempts++;
         const delay = Math.min(1000 * Math.pow(1.5, reconnectAttempts), maxReconnectDelay);
@@ -413,12 +360,9 @@ function setupGlobalFunctions() {
         
         setTimeout(async () => {
             try {
-                // Only reconnect if we have a username
-                if (CONFIG.myUsername) {
-                    await FirestoreClient.init(CONFIG.myUsername);
-                    reconnectAttempts = 0;
-                    UIManager.showStatus('Reconnected');
-                }
+                await WebSocketClient.connect();
+                reconnectAttempts = 0;
+                UIManager.showStatus('Reconnected');
             } catch (error) {
                 console.warn('Reconnect failed:', error);
                 scheduleReconnect();
@@ -426,17 +370,12 @@ function setupGlobalFunctions() {
         }, delay);
     }
     
-    // Monitor Firestore connection
+    // Monitor WebSocket connection
     setInterval(() => {
-        // Firestore doesn't have a direct "connection state" like WebSocket
-        // Instead, we check if we're initialized and if we have a username
-        if (CONFIG.myUsername && FirestoreClient && !FirestoreClient.isInitialized) {
-            if (reconnectAttempts === 0 && !CONFIG.isInCall) {
+        if (CONFIG.ws && CONFIG.ws.readyState === WebSocket.CLOSED) {
+            if (reconnectAttempts === 0) {
                 scheduleReconnect();
             }
-        } else if (FirestoreClient && FirestoreClient.isInitialized) {
-            // Reset reconnect attempts on successful connection
-            reconnectAttempts = 0;
         }
     }, 5000);
 })();
@@ -448,70 +387,33 @@ function setupGlobalFunctions() {
         isGitHubPages: window.location.hostname.includes('github.io'),
         isSecure: window.location.protocol === 'https:',
         userAgent: navigator.userAgent,
-        platform: navigator.platform,
-        usingFirestore: true // Flag to indicate we're using Firestore
+        platform: navigator.platform
     };
     
     console.log('Environment:', CONFIG.environment);
 })();
 
-// ========== CONNECTION DIAGNOSTIC COMMAND - UPDATED ==========
-window.diagnoseConnection = async function() {
-    console.log('🔍 Running WebRTC diagnostic...');
-    
-    const diagnosis = {
-        browser: navigator.userAgent,
-        webrtcSupported: !!window.RTCPeerConnection,
-        iceServers: CONFIG.peerConfig?.iceServers?.length || 0,
-        iceCandidateStats: CONFIG.iceCandidateGathering || {},
-        failureReasons: CONFIG.iceFailureReasons || [],
-        networkType: navigator.connection?.type || 'unknown',
-        downlink: navigator.connection?.downlink || 'unknown',
-        rtt: navigator.connection?.rtt || 'unknown',
-        firestoreInitialized: FirestoreClient?.isInitialized || false,
-        firestoreProject: CONFIG.firebaseConfig?.projectId || 'unknown'
-    };
-    
-    console.log('📊 Connection Diagnosis:');
-    console.table(diagnosis);
-    
-    // Test TURN servers explicitly
-    if (window.WebRTCManager && WebRTCManager.testTurnServers) {
-        await WebRTCManager.testTurnServers();
+// ========== VIDEO STABILITY MONITOR ==========
+// Monitor video element and recover if it stops
+setInterval(() => {
+    const localVideo = document.getElementById('localVideo');
+    if (localVideo && CONFIG.localStream && CONFIG.isInCall) {
+        // Check if video is actually playing
+        if (localVideo.readyState === 0 || localVideo.paused) {
+            console.log('Video not playing, attempting recovery...');
+            if (window.WebRTCManager && WebRTCManager.recoverVideo) {
+                WebRTCManager.recoverVideo();
+            }
+        }
     }
-    
-    return diagnosis;
-};
+}, 3000);
 
-// ========== FIRESTORE HEALTH CHECK ==========
-window.checkFirestoreHealth = async function() {
-    console.log('🔍 Checking Firestore connection...');
-    
-    if (!FirestoreClient || !FirestoreClient.isInitialized) {
-        console.log('❌ Firestore not initialized');
-        return { status: 'error', message: 'Not initialized' };
-    }
-    
-    try {
-        // Try to write a test message
-        const testResult = await FirestoreClient.sendToServer({
-            type: 'ping',
-            test: true
-        });
-        
-        console.log('✅ Firestore is healthy');
-        return { status: 'ok', message: 'Connected' };
-    } catch (error) {
-        console.error('❌ Firestore error:', error);
-        return { status: 'error', message: error.message };
-    }
-};
 
 // Export for testing (if needed)
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         loadIceServers,
-        configureFirestore,
+        configureSignalingUrl,
         setupGlobalFunctions
     };
 }
