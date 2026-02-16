@@ -20,6 +20,11 @@ const WebRTCManager = {
             failedServers: []
         };
         
+        // Ensure iceCandidatesQueue is initialized
+        if (!CONFIG.iceCandidatesQueue) {
+            CONFIG.iceCandidatesQueue = [];
+        }
+        
         const config = {
             iceServers: CONFIG.peerConfig?.iceServers || [
                 { urls: "stun:stun.l.google.com:19302" }
@@ -151,10 +156,6 @@ const WebRTCManager = {
                 const connectTime = Date.now() - (CONFIG.iceStartTime || Date.now());
                 console.log(`✅ ICE connected in ${connectTime}ms`);
                 
-				if (CONFIG.peerConnection.connectionState === 'connected') {
-				UIManager.updateWebRTCIndicator('connected-no-rtt');
-				}
-				
                 // Log which candidate type succeeded
                 CONFIG.peerConnection.getStats().then(stats => {
                     stats.forEach(report => {
@@ -222,161 +223,153 @@ const WebRTCManager = {
         };
         
         // ===== PEER CONNECTION STATE MONITORING =====
-		
-		
-		
-// ===== PEER CONNECTION STATE MONITORING =====
-CONFIG.peerConnection.onconnectionstatechange = () => {
-    console.log('🔗 Connection state:', CONFIG.peerConnection.connectionState);
-    DebugConsole?.info('WebRTC', `Connection state: ${CONFIG.peerConnection.connectionState}`);
-    
-    switch (CONFIG.peerConnection.connectionState) {
-        case 'connected':
-            console.log('✅ PEER CONNECTION CONNECTED!');
-            DebugConsole?.success('WebRTC', 'Peer connection connected');
-            CONFIG.isInCall = true;
-            CONFIG.isProcessingAnswer = false;
-            UIManager.showStatus('Call connected');
-            UIManager.updateCallButtons();
+        CONFIG.peerConnection.onconnectionstatechange = () => {
+            console.log('🔗 Connection state:', CONFIG.peerConnection.connectionState);
+            DebugConsole?.info('WebRTC', `Connection state: ${CONFIG.peerConnection.connectionState}`);
             
-            // Update WebRTC indicator - show connected without RTT initially
-            if (UIManager.updateWebRTCIndicator) {
-                UIManager.updateWebRTCIndicator('connected-no-rtt');
-            }
-            
-            // Try to get RTT from stats for more detailed indicator
-            try {
-                CONFIG.peerConnection.getStats().then(stats => {
-                    stats.forEach(report => {
-                        if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-                            if (report.currentRoundTripTime) {
-                                const rtt = Math.round(report.currentRoundTripTime * 1000);
-                                console.log(`📊 WebRTC RTT: ${rtt}ms`);
-                                DebugConsole?.info('WebRTC', `RTT: ${rtt}ms`);
-                                if (UIManager.updateWebRTCIndicator) {
-                                    UIManager.updateWebRTCIndicator('connected', rtt);
+            switch (CONFIG.peerConnection.connectionState) {
+                case 'connected':
+                    console.log('✅ PEER CONNECTION CONNECTED!');
+                    DebugConsole?.success('WebRTC', 'Peer connection connected');
+                    CONFIG.isInCall = true;
+                    CONFIG.isProcessingAnswer = false;
+                    UIManager.showStatus('Call connected');
+                    UIManager.updateCallButtons();
+                    
+                    // Update WebRTC indicator
+                    if (UIManager.updateWebRTCIndicator) {
+                        UIManager.updateWebRTCIndicator('connected-no-rtt');
+                    }
+                    
+                    // Try to get RTT from stats
+                    try {
+                        CONFIG.peerConnection.getStats().then(stats => {
+                            stats.forEach(report => {
+                                if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                                    if (report.currentRoundTripTime) {
+                                        const rtt = Math.round(report.currentRoundTripTime * 1000);
+                                        if (UIManager.updateWebRTCIndicator) {
+                                            UIManager.updateWebRTCIndicator('connected', rtt);
+                                        }
+                                    }
                                 }
-                            }
-                        }
-                    });
-                }).catch(err => console.log('Could not get stats:', err));
-            } catch (statsError) {
-                console.log('Stats error:', statsError);
-            }
-            
-            // Final audio check
-            setTimeout(() => {
-                const audioTracks = CONFIG.remoteStream.getAudioTracks();
-                console.log(`🔊 Connected! Remote audio tracks: ${audioTracks.length}`);
-                DebugConsole?.info('WebRTC', `Connected! Remote audio tracks: ${audioTracks.length}`);
-                DebugConsole?.success('Call', 'Call connected successfully');
-            }, 500);
-            break;
-            
-        case 'connecting':
-            console.log('⏳ Peer connection connecting...');
-            DebugConsole?.info('WebRTC', 'Peer connection connecting');
-            if (UIManager.updateWebRTCIndicator) {
-                UIManager.updateWebRTCIndicator('connecting');
-            }
-            break;
-            
-        case 'disconnected':
-            console.log('⚠️ Peer connection disconnected');
-            DebugConsole?.warning('WebRTC', 'Peer connection disconnected');
-            if (UIManager.updateWebRTCIndicator) {
-                UIManager.updateWebRTCIndicator('disconnected');
-            }
-            
-            // Don't clean up immediately - give ICE restart a chance
-            setTimeout(() => {
-                if (CONFIG.peerConnection && 
-                    (CONFIG.peerConnection.connectionState === 'disconnected' || 
-                     CONFIG.peerConnection.connectionState === 'failed')) {
-                    
-                    // Check if ICE restart is already handling it
-                    if (CONFIG.peerConnection.iceConnectionState === 'failed' ||
-                        CONFIG.peerConnection.iceConnectionState === 'disconnected') {
-                        console.log('❌ Connection not recovered, cleaning up');
-                        DebugConsole?.call('Call', 'Call ended unexpectedly');
-                        
-                        // Force UI update
-                        if (CONFIG.isAdmin) {
-                            const adminHangupBtn = document.getElementById('adminHangupBtn');
-                            if (adminHangupBtn) {
-                                adminHangupBtn.disabled = true;
-                                adminHangupBtn.className = 'btn-hangup';
-                            }
-                        } else {
-                            const userHangupBtn = document.querySelector('.btn-hangup');
-                            if (userHangupBtn) {
-                                userHangupBtn.disabled = true;
-                                userHangupBtn.className = 'btn-hangup';
-                            }
-                        }
-                        
-                        CallManager.cleanupCall();
-                        UIManager.showStatus('Call disconnected');
+                            });
+                        }).catch(err => console.log('Could not get stats:', err));
+                    } catch (statsError) {
+                        console.log('Stats error:', statsError);
                     }
-                }
-            }, 5000);
-            break;
-            
-        case 'failed':
-            console.log('❌ Peer connection failed');
-            DebugConsole?.error('WebRTC', 'Peer connection failed');
-            if (UIManager.updateWebRTCIndicator) {
-                UIManager.updateWebRTCIndicator('failed');
-            }
-            
-            // Don't clean up immediately - give ICE restart a chance
-            setTimeout(() => {
-                if (CONFIG.peerConnection && 
-                    (CONFIG.peerConnection.connectionState === 'disconnected' || 
-                     CONFIG.peerConnection.connectionState === 'failed')) {
                     
-                    // Check if ICE restart is already handling it
-                    if (CONFIG.peerConnection.iceConnectionState === 'failed' ||
-                        CONFIG.peerConnection.iceConnectionState === 'disconnected') {
-                        console.log('❌ Connection not recovered, cleaning up');
-                        DebugConsole?.call('Call', 'Call ended unexpectedly');
-                        
-                        // Force UI update
-                        if (CONFIG.isAdmin) {
-                            const adminHangupBtn = document.getElementById('adminHangupBtn');
-                            if (adminHangupBtn) {
-                                adminHangupBtn.disabled = true;
-                                adminHangupBtn.className = 'btn-hangup';
-                            }
-                        } else {
-                            const userHangupBtn = document.querySelector('.btn-hangup');
-                            if (userHangupBtn) {
-                                userHangupBtn.disabled = true;
-                                userHangupBtn.className = 'btn-hangup';
+                    // Final audio check
+                    setTimeout(() => {
+                        const audioTracks = CONFIG.remoteStream.getAudioTracks();
+                        console.log(`🔊 Connected! Remote audio tracks: ${audioTracks.length}`);
+                        DebugConsole?.info('WebRTC', `Connected! Remote audio tracks: ${audioTracks.length}`);
+                        DebugConsole?.success('Call', 'Call connected successfully');
+                    }, 500);
+                    break;
+                    
+                case 'connecting':
+                    console.log('⏳ Peer connection connecting...');
+                    DebugConsole?.info('WebRTC', 'Peer connection connecting');
+                    if (UIManager.updateWebRTCIndicator) {
+                        UIManager.updateWebRTCIndicator('connecting');
+                    }
+                    break;
+                    
+                case 'disconnected':
+                    console.log('⚠️ Peer connection disconnected');
+                    DebugConsole?.warning('WebRTC', 'Peer connection disconnected');
+                    if (UIManager.updateWebRTCIndicator) {
+                        UIManager.updateWebRTCIndicator('disconnected');
+                    }
+                    
+                    // Don't clean up immediately - give ICE restart a chance
+                    setTimeout(() => {
+                        if (CONFIG.peerConnection && 
+                            (CONFIG.peerConnection.connectionState === 'disconnected' || 
+                             CONFIG.peerConnection.connectionState === 'failed')) {
+                            
+                            // Check if ICE restart is already handling it
+                            if (CONFIG.peerConnection.iceConnectionState === 'failed' ||
+                                CONFIG.peerConnection.iceConnectionState === 'disconnected') {
+                                console.log('❌ Connection not recovered, cleaning up');
+                                DebugConsole?.call('Call', 'Call ended unexpectedly');
+                                
+                                // Force UI update
+                                if (CONFIG.isAdmin) {
+                                    const adminHangupBtn = document.getElementById('adminHangupBtn');
+                                    if (adminHangupBtn) {
+                                        adminHangupBtn.disabled = true;
+                                        adminHangupBtn.className = 'btn-hangup';
+                                    }
+                                } else {
+                                    const userHangupBtn = document.querySelector('.btn-hangup');
+                                    if (userHangupBtn) {
+                                        userHangupBtn.disabled = true;
+                                        userHangupBtn.className = 'btn-hangup';
+                                    }
+                                }
+                                
+                                CallManager.cleanupCall();
+                                UIManager.showStatus('Call disconnected');
                             }
                         }
-                        
-                        CallManager.cleanupCall();
-                        UIManager.showStatus('Call disconnected');
+                    }, 5000);
+                    break;
+                    
+                case 'failed':
+                    console.log('❌ Peer connection failed');
+                    DebugConsole?.error('WebRTC', 'Peer connection failed');
+                    if (UIManager.updateWebRTCIndicator) {
+                        UIManager.updateWebRTCIndicator('failed');
                     }
-                }
-            }, 5000);
-            break;
-            
-        case 'closed':
-            console.log('🔴 Peer connection closed');
-            DebugConsole?.info('WebRTC', 'Peer connection closed');
-            if (UIManager.updateWebRTCIndicator) {
-                UIManager.updateWebRTCIndicator('closed');
+                    
+                    // Don't clean up immediately - give ICE restart a chance
+                    setTimeout(() => {
+                        if (CONFIG.peerConnection && 
+                            (CONFIG.peerConnection.connectionState === 'disconnected' || 
+                             CONFIG.peerConnection.connectionState === 'failed')) {
+                            
+                            // Check if ICE restart is already handling it
+                            if (CONFIG.peerConnection.iceConnectionState === 'failed' ||
+                                CONFIG.peerConnection.iceConnectionState === 'disconnected') {
+                                console.log('❌ Connection not recovered, cleaning up');
+                                DebugConsole?.call('Call', 'Call ended unexpectedly');
+                                
+                                // Force UI update
+                                if (CONFIG.isAdmin) {
+                                    const adminHangupBtn = document.getElementById('adminHangupBtn');
+                                    if (adminHangupBtn) {
+                                        adminHangupBtn.disabled = true;
+                                        adminHangupBtn.className = 'btn-hangup';
+                                    }
+                                } else {
+                                    const userHangupBtn = document.querySelector('.btn-hangup');
+                                    if (userHangupBtn) {
+                                        userHangupBtn.disabled = true;
+                                        userHangupBtn.className = 'btn-hangup';
+                                    }
+                                }
+                                
+                                CallManager.cleanupCall();
+                                UIManager.showStatus('Call disconnected');
+                            }
+                        }
+                    }, 5000);
+                    break;
+                    
+                case 'closed':
+                    console.log('❌ Peer connection closed');
+                    DebugConsole?.info('WebRTC', 'Peer connection closed');
+                    if (UIManager.updateWebRTCIndicator) {
+                        UIManager.updateWebRTCIndicator('closed');
+                    }
+                    CallManager.cleanupCall();
+                    break;
             }
-            CallManager.cleanupCall();
-            break;
-    }
-};		
+        };
         
-        
-		
-		// Handle incoming tracks - FIXED for play interruption warning
+        // Handle incoming tracks - FIXED for play interruption warning
         CONFIG.peerConnection.ontrack = (event) => {
             console.log('🎬 ontrack event:', event.track.kind);
             DebugConsole?.success('WebRTC', `Received remote ${event.track.kind} track`);
@@ -707,6 +700,12 @@ CONFIG.peerConnection.onconnectionstatechange = () => {
         if (!CONFIG.peerConnection) {
             console.log('Queueing ICE candidate (Trickle ICE ready)');
             DebugConsole?.info('WebRTC', 'Queueing ICE candidate (no peer connection)');
+            
+            // Ensure iceCandidatesQueue exists
+            if (!CONFIG.iceCandidatesQueue) {
+                CONFIG.iceCandidatesQueue = [];
+            }
+            
             CONFIG.iceCandidatesQueue.push(data.candidate);
             return;
         }
@@ -736,6 +735,13 @@ CONFIG.peerConnection.onconnectionstatechange = () => {
     },
     
     processIceCandidateQueue() {
+        // Safety check - ensure iceCandidatesQueue exists
+        if (!CONFIG.iceCandidatesQueue) {
+            console.log('⚠️ iceCandidatesQueue is undefined, initializing empty array');
+            CONFIG.iceCandidatesQueue = [];
+            return;
+        }
+        
         if (!CONFIG.peerConnection || CONFIG.iceCandidatesQueue.length === 0) return;
         
         console.log(`Processing ${CONFIG.iceCandidatesQueue.length} queued ICE candidates (Trickle ICE)`);
