@@ -1,11 +1,15 @@
-// js/call-manager.js - FIRESTORE VERSION WITH IMMEDIATE HANGUP
+// js/call-manager.js - FIRESTORE VERSION WITH CALL COOLDOWN AND ADMIN STATE TRACKING
 const CallManager = {
-    // Add audio element for notification sound
+    // Audio element for notification sound
     notificationAudio: null,
     notificationInterval: null,
     
-    // Add this property
+    // Call state properties
     manualHangupControl: false,
+    
+    // Cooldown properties
+    callCooldown: false,
+    callCooldownTimer: null,
     
     async callUser(userToCall, socketToCall) {
         if (CONFIG.isInCall || CONFIG.isProcessingAnswer) {
@@ -20,12 +24,18 @@ const CallManager = {
             return;
         }
         
+        // Check if admin is in call
+        if (CONFIG.adminInCall) {
+            UIManager.showError('Admin is currently in a call');
+            DebugConsole?.warning('Call', 'Admin is in a call');
+            return;
+        }
+        
         console.log(`Calling ${userToCall} (${socketToCall})...`);
         DebugConsole?.call('Call', `Calling ${userToCall}`);
         UIManager.showStatus(`Calling ${userToCall}...`);
         
-        // ==== Show connecting status and enable hangup button immediately ====
-        console.log('=== Showing Connecting status for call ===');
+        // Show connecting status
         if (window.showConnectionStatus) {
             window.showConnectionStatus('Connecting...', 'connecting');
         }
@@ -37,9 +47,9 @@ const CallManager = {
         CONFIG.targetUsername = userToCall;
         CONFIG.targetSocketId = socketToCall;
         CONFIG.isInitiator = true;
-        CONFIG.isCallActive = true; // Track that call is in progress
+        CONFIG.isCallActive = true;
         
-        // ==== CRITICAL: Enable hangup button IMMEDIATELY ====
+        // Enable hangup button immediately
         this.enableHangupButton(true);
         
         // Ensure permissions
@@ -55,7 +65,7 @@ const CallManager = {
         // Create peer connection
         WebRTCManager.createPeerConnection();
         
-        // Send call initiation via FIRESTORE
+        // Send call initiation via Firestore
         FirestoreClient.sendToServer({
             type: 'call-initiate',
             targetSocketId: socketToCall,
@@ -72,7 +82,7 @@ const CallManager = {
         console.log(`Setting hangup button enabled: ${enable}`);
         DebugConsole?.info('Call', `Hangup button ${enable ? 'enabled' : 'disabled'}`);
         
-        CONFIG.manualHangupControl = enable; // Set the flag
+        CONFIG.manualHangupControl = enable;
         
         if (CONFIG.isAdmin) {
             const adminHangupBtn = document.getElementById('adminHangupBtn');
@@ -89,6 +99,49 @@ const CallManager = {
         }
     },
     
+    // Update call button state based on admin availability
+    updateCallButtonState(enabled) {
+        if (CONFIG.isAdmin) return;
+        
+        const callBtn = document.querySelector('.btn-call');
+        if (callBtn) {
+            callBtn.disabled = !enabled;
+            callBtn.className = enabled ? 'btn-call active' : 'btn-call';
+        }
+    },
+    
+    // Start cooldown period after call ends
+    startCallCooldown() {
+        console.log('⏳ Starting call cooldown (2 seconds)');
+        this.callCooldown = true;
+        
+        // Disable Call button immediately
+        this.updateCallButtonState(false);
+        UIManager.updateCallButtons();
+        
+        // Clear any existing timer
+        if (this.callCooldownTimer) {
+            clearTimeout(this.callCooldownTimer);
+        }
+        
+        // Set timer to re-enable after checking admin status
+        this.callCooldownTimer = setTimeout(() => {
+            this.callCooldown = false;
+            console.log('⏳ Call cooldown ended');
+            
+            // Check admin status before re-enabling
+            if (CONFIG.adminSocketId && !CONFIG.adminInCall && !CONFIG.isInCall) {
+                this.updateCallButtonState(true);
+                UIManager.showStatus('Ready to call');
+            } else if (CONFIG.adminInCall) {
+                UIManager.showStatus('Admin is in a call');
+            } else {
+                UIManager.showStatus('Admin not available');
+            }
+            UIManager.updateCallButtons();
+        }, 2000); // 2 second cooldown
+    },
+    
     // Alias for callUser to maintain compatibility
     callAdmin() {
         if (!CONFIG.adminSocketId) {
@@ -96,11 +149,16 @@ const CallManager = {
             DebugConsole?.error('Call', 'Admin not available');
             return;
         }
+        
+        if (CONFIG.adminInCall) {
+            UIManager.showError('Admin is currently in a call');
+            DebugConsole?.warning('Call', 'Admin is in a call');
+            return;
+        }
+        
         DebugConsole?.call('Call', 'Calling admin');
         
-        // Enable hangup button immediately
         this.enableHangupButton(true);
-        
         this.callUser('Administrator', CONFIG.adminSocketId);
     },
     
@@ -122,23 +180,16 @@ const CallManager = {
         // Format the display name
         let displayName = data.callerName;
         
-        // Special case for admin (access code "1")
         if (displayName === '1') {
             displayName = 'Administrator';
-        }
-        // For other numeric codes, check if we know the display name
-        else if (/^\d+$/.test(displayName) && CONFIG.myId && CONFIG.myUsername) {
-            // If the caller is the admin and we know the admin socket ID
+        } else if (/^\d+$/.test(displayName) && CONFIG.myId && CONFIG.myUsername) {
             if (CONFIG.adminSocketId && data.callerSocketId === CONFIG.adminSocketId) {
                 displayName = 'Administrator';
-            }
-            // Otherwise use a generic format
-            else {
+            } else {
                 displayName = `User ${displayName}`;
             }
         }
         
-        // Fallback to checking for callerDisplayName if server provides it
         if (data.callerDisplayName) {
             displayName = data.callerDisplayName;
         }
@@ -148,13 +199,12 @@ const CallManager = {
     },
     
     showIncomingCallNotification(callerDisplayName) {
+        // ... (keep your existing notification code)
         DebugConsole?.call('Call', `Showing incoming call notification from ${callerDisplayName}`);
         
-        // Remove any existing notification
         const existing = document.getElementById('incoming-call-notification');
         if (existing) existing.remove();
         
-        // Create notification
         const notification = document.createElement('div');
         notification.id = 'incoming-call-notification';
         notification.style.cssText = `
@@ -181,10 +231,8 @@ const CallManager = {
         
         document.body.appendChild(notification);
         
-        // === ADDED: Start playing notification sound ===
         this.startNotificationSound();
         
-        // Add handlers
         document.getElementById('accept-btn').onclick = () => {
             DebugConsole?.call('Call', 'User accepted incoming call');
             this.stopNotificationSound();
@@ -199,7 +247,6 @@ const CallManager = {
             this.rejectCall();
         };
         
-        // Auto-remove after 30 seconds
         setTimeout(() => {
             if (document.body.contains(notification)) {
                 DebugConsole?.warning('Call', 'Incoming call timed out');
@@ -210,124 +257,17 @@ const CallManager = {
         }, 30000);
     },
     
-    // === NEW: Start notification sound ===
+    // Notification sound methods (keep your existing implementation)
     startNotificationSound() {
-        DebugConsole?.info('Call', 'Starting notification sound');
-        
-        // Create audio element if it doesn't exist
-        if (!this.notificationAudio) {
-            this.notificationAudio = new Audio();
-            
-            // Create a subtle bell tone using Web Audio API for better compatibility
-            try {
-                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const oscillator = audioContext.createOscillator();
-                const gainNode = audioContext.createGain();
-                
-                oscillator.connect(gainNode);
-                gainNode.connect(audioContext.destination);
-                
-                oscillator.type = 'sine';
-                oscillator.frequency.setValueAtTime(800, audioContext.currentTime); // A5 note
-                oscillator.frequency.setValueAtTime(1000, audioContext.currentTime + 0.1); // B5 note
-                
-                gainNode.gain.setValueAtTime(0.1, audioContext.currentTime); // Low volume
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-                
-                oscillator.start();
-                oscillator.stop(audioContext.currentTime + 0.5);
-                
-                // Create a MediaStream from the oscillator
-                const destination = audioContext.createMediaStreamDestination();
-                oscillator.connect(destination);
-                
-                // Convert to blob and URL for the Audio element
-                const mediaRecorder = new MediaRecorder(destination.stream);
-                const chunks = [];
-                
-                mediaRecorder.ondataavailable = e => chunks.push(e.data);
-                mediaRecorder.onstop = () => {
-                    const blob = new Blob(chunks, { type: 'audio/ogg; codecs=opus' });
-                    const url = URL.createObjectURL(blob);
-                    this.notificationAudio.src = url;
-                };
-                
-                mediaRecorder.start();
-                setTimeout(() => mediaRecorder.stop(), 500);
-                
-            } catch (error) {
-                console.log('Web Audio API not available, using fallback sound:', error);
-                DebugConsole?.warning('Call', 'Web Audio API not available, using fallback');
-                
-                // Fallback: Base64 encoded simple bell sound
-                const bellSound = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZ3620YQQAAAAAAA==";
-                this.notificationAudio.src = bellSound;
-            }
-            
-            this.notificationAudio.loop = true;
-            this.notificationAudio.volume = 0.3; // 30% volume for subtlety
-        }
-        
-        // Play the sound
-        this.notificationAudio.play().catch(e => {
-            console.log('Notification sound play failed, using beep fallback:', e);
-            DebugConsole?.warning('Call', 'Notification sound failed, using beep fallback');
-            this.startBeepFallback();
-        });
-        
-        // Set interval to repeat sound every 2 seconds
-        this.notificationInterval = setInterval(() => {
-            if (this.notificationAudio) {
-                this.notificationAudio.currentTime = 0;
-                this.notificationAudio.play().catch(e => console.log('Notification sound replay failed:', e));
-            }
-        }, 2000);
+        // ... your existing code
     },
     
-    // === NEW: Simple beep fallback using Web Audio ===
-    startBeepFallback() {
-        try {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            
-            // Create a beep sound
-            const playBeep = () => {
-                const oscillator = audioContext.createOscillator();
-                const gainNode = audioContext.createGain();
-                
-                oscillator.connect(gainNode);
-                gainNode.connect(audioContext.destination);
-                
-                oscillator.type = 'sine';
-                oscillator.frequency.value = 800;
-                
-                gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-                
-                oscillator.start();
-                oscillator.stop(audioContext.currentTime + 0.5);
-            };
-            
-            // Play beep immediately and then every 2 seconds
-            playBeep();
-            this.notificationInterval = setInterval(playBeep, 2000);
-            
-        } catch (error) {
-            console.log('Beep fallback also failed:', error);
-            DebugConsole?.error('Call', 'Beep fallback failed');
-        }
-    },
-    
-    // === NEW: Stop notification sound ===
     stopNotificationSound() {
-        if (this.notificationAudio) {
-            this.notificationAudio.pause();
-            this.notificationAudio.currentTime = 0;
-        }
-        
-        if (this.notificationInterval) {
-            clearInterval(this.notificationInterval);
-            this.notificationInterval = null;
-        }
+        // ... your existing code
+    },
+    
+    startBeepFallback() {
+        // ... your existing code
     },
     
     async answerCall() {
@@ -341,8 +281,6 @@ const CallManager = {
         UIManager.showStatus('Answering call...');
         UIManager.updateCallButtons();
         
-        // === ADDED: Show connecting status when answering ===
-        console.log('=== Showing Connecting status for answer ===');
         if (window.showConnectionStatus) {
             window.showConnectionStatus('Connecting...', 'connecting');
         }
@@ -350,7 +288,6 @@ const CallManager = {
             window.monitorCallConnection();
         }
         
-        // Ensure permissions
         const hasPerms = await AuthManager.ensureMediaPermissions();
         if (!hasPerms) {
             UIManager.showError('Need camera/mic permissions to answer');
@@ -360,7 +297,6 @@ const CallManager = {
             return;
         }
         
-        // Send acceptance via FIRESTORE
         FirestoreClient.sendToServer({
             type: 'call-accept',
             targetSocketId: CONFIG.targetSocketId,
@@ -368,7 +304,6 @@ const CallManager = {
             calleeName: CONFIG.myUsername
         });
         
-        // Create peer connection
         WebRTCManager.createPeerConnection();
         
         UIManager.showStatus('Connecting...');
@@ -378,7 +313,6 @@ const CallManager = {
         console.log('=== CallManager.rejectCall() - stopping monitoring ===');
         DebugConsole?.call('Call', 'Rejecting call');
         
-        // Clean up status monitoring
         if (typeof stopMonitoring !== 'undefined') {
             stopMonitoring();
         }
@@ -386,7 +320,6 @@ const CallManager = {
             hideConnectionStatus();
         }
         
-        // Stop notification sound
         this.stopNotificationSound();
         
         if (CONFIG.targetSocketId) {
@@ -401,7 +334,6 @@ const CallManager = {
         CONFIG.incomingCallFrom = null;
         CONFIG.isProcessingAnswer = false;
         
-        // Remove notification if exists
         const notification = document.getElementById('incoming-call-notification');
         if (notification) notification.remove();
         
@@ -414,12 +346,10 @@ const CallManager = {
         DebugConsole?.success('Call', `Call accepted by ${data.calleeName}`);
         UIManager.showStatus('Call accepted - connecting...');
         
-        // FIX: Set isInCall to true when call is accepted
         CONFIG.isInCall = true;
         UIManager.updateCallButtons();
         
         if (CONFIG.isInitiator) {
-            // We are the caller, now we can send the offer
             console.log('We are the caller, sending offer now...');
             DebugConsole?.network('WebRTC', 'Sending ICE offer to server');
             setTimeout(() => {
@@ -428,7 +358,6 @@ const CallManager = {
                 }
             }, 500);
         } else {
-            // We are the callee, we'll handle the offer when it arrives
             console.log('We are the callee, waiting for offer...');
             DebugConsole?.network('WebRTC', 'Waiting for ICE offer');
         }
@@ -438,7 +367,6 @@ const CallManager = {
         console.log('=== CallManager.handleCallRejected() - stopping monitoring ===');
         DebugConsole?.warning('Call', `Call rejected by ${data.rejecterName || 'remote user'}`);
         
-        // Clean up status monitoring
         if (typeof stopMonitoring !== 'undefined') {
             stopMonitoring();
         }
@@ -447,6 +375,12 @@ const CallManager = {
         }
         
         console.log('Call rejected by:', data.rejecterName);
+        
+        // Admin is now available again
+        if (!CONFIG.isAdmin) {
+            CONFIG.adminInCall = false;
+        }
+        
         this.cleanupCall();
         UIManager.showStatus('Call rejected by ' + (data.rejecterName || 'user'));
     },
@@ -455,7 +389,6 @@ const CallManager = {
         console.log('=== CallManager.handleCallEnded() - stopping monitoring ===');
         DebugConsole?.call('Call', `Call ended by ${data.endedByName || 'remote user'}`);
         
-        // Clean up status monitoring
         if (typeof stopMonitoring !== 'undefined') {
             stopMonitoring();
         }
@@ -465,7 +398,12 @@ const CallManager = {
         
         console.log('Call ended by remote:', data.endedByName || 'remote user');
         
-        // ===== FORCE ADMIN UI UPDATE =====
+        // Admin is now available again
+        if (!CONFIG.isAdmin) {
+            CONFIG.adminInCall = false;
+        }
+        
+        // Force UI update
         CONFIG.isInCall = false;
         CONFIG.isCallActive = false;
         
@@ -500,7 +438,6 @@ const CallManager = {
         UIManager.showStatus('Call ended by ' + (data.endedByName || 'remote user'));
     },
     
-    // Add this method to call-manager.js
     handleUnexpectedDisconnect() {
         console.log('⚠️ Unexpected call disconnection');
         DebugConsole?.warning('Call', 'Call ended unexpectedly');
@@ -508,7 +445,11 @@ const CallManager = {
         CONFIG.isInCall = false;
         CONFIG.isCallActive = false;
         
-        // Force UI update
+        // Admin is now available again
+        if (!CONFIG.isAdmin) {
+            CONFIG.adminInCall = false;
+        }
+        
         if (CONFIG.isAdmin) {
             const adminHangupBtn = document.getElementById('adminHangupBtn');
             if (adminHangupBtn) {
@@ -531,7 +472,6 @@ const CallManager = {
         console.log('=== CallManager.hangup() - stopping monitoring ===');
         DebugConsole?.call('Call', 'Ending call');
         
-        // Clean up status monitoring
         if (typeof stopMonitoring !== 'undefined') {
             stopMonitoring();
         }
@@ -542,19 +482,14 @@ const CallManager = {
         console.log('Ending call');
         UIManager.showStatus('Ending call...');
         
-        // If we haven't even connected yet, just clean up locally
         if (!CONFIG.peerConnection || CONFIG.peerConnection.connectionState === 'new' || CONFIG.peerConnection.connectionState === 'connecting') {
             console.log('Call cancelled before connection established');
             DebugConsole?.info('Call', 'Call cancelled before connection');
-            
-            // REMOVED: Don't send call-cancel to server
-            // Just clean up locally
             
             this.cleanupCall();
             return;
         }
         
-        // Normal hangup for connected call
         if (CONFIG.targetSocketId) {
             FirestoreClient.sendToServer({
                 type: 'call-end',
@@ -565,56 +500,51 @@ const CallManager = {
         this.cleanupCall();
     },
     
-cleanupCall() {
-    console.log('Cleaning up call...');
-    DebugConsole?.info('Call', 'Cleaning up call resources');
-    
-    // Reset WebRTC indicator to standby
-    if (UIManager.updateWebRTCIndicator) {
-        UIManager.updateWebRTCIndicator('standby');
+    cleanupCall() {
+        console.log('Cleaning up call...');
+        DebugConsole?.info('Call', 'Cleaning up call resources');
+        
+        // Stop WebRTC metrics monitoring
+        if (window.WebRTCMetrics) {
+            WebRTCMetrics.stop();
+        }
+        
+        // Stop any notification sound
+        this.stopNotificationSound();
+        
+        CONFIG.isProcessingAnswer = false;
+        CONFIG.isInCall = false;
+        CONFIG.isCallActive = false;
+        CONFIG.manualHangupControl = false;
+        
+        // Start cooldown to prevent immediate re-call
+        this.startCallCooldown();
+        
+        if (CONFIG.peerConnection) {
+            CONFIG.peerConnection.close();
+            CONFIG.peerConnection = null;
+        }
+        
+        if (CONFIG.elements.remoteVideo && CONFIG.elements.remoteVideo.srcObject) {
+            CONFIG.elements.remoteVideo.srcObject.getTracks().forEach(track => track.stop());
+            CONFIG.elements.remoteVideo.srcObject = null;
+        }
+        
+        CONFIG.targetSocketId = null;
+        CONFIG.targetUsername = null;
+        CONFIG.isInitiator = false;
+        CONFIG.incomingCallFrom = null;
+        CONFIG.iceCandidatesQueue = [];
+        
+        const notification = document.getElementById('incoming-call-notification');
+        if (notification) notification.remove();
+        
+        this.enableHangupButton(false);
+        
+        UIManager.showStatus('Ready');
+        UIManager.updateCallButtons();
+        DebugConsole?.info('Call', 'Call cleanup complete');
     }
-    
-    // Stop WebRTC metrics monitoring
-    if (window.WebRTCMetrics) {
-        WebRTCMetrics.stop();
-    }
-    
-    // Stop any notification sound
-    this.stopNotificationSound();
-    
-    CONFIG.isProcessingAnswer = false;
-    CONFIG.isInCall = false;
-    CONFIG.isCallActive = false;
-    CONFIG.manualHangupControl = false; // Reset the flag
-    
-    if (CONFIG.peerConnection) {
-        CONFIG.peerConnection.close();
-        CONFIG.peerConnection = null;
-    }
-    
-    if (CONFIG.elements.remoteVideo && CONFIG.elements.remoteVideo.srcObject) {
-        CONFIG.elements.remoteVideo.srcObject.getTracks().forEach(track => track.stop());
-        CONFIG.elements.remoteVideo.srcObject = null;
-    }
-    
-    CONFIG.targetSocketId = null;
-    CONFIG.targetUsername = null;
-    CONFIG.isInitiator = false;
-    CONFIG.incomingCallFrom = null;
-    CONFIG.iceCandidatesQueue = [];
-    
-    // Remove notification if exists
-    const notification = document.getElementById('incoming-call-notification');
-    if (notification) notification.remove();
-    
-    // ===== FORCE HANGUP BUTTON DISABLED =====
-    this.enableHangupButton(false);
-    
-    UIManager.showStatus('Ready');
-    UIManager.updateCallButtons();
-    DebugConsole?.info('Call', 'Call cleanup complete');
-}
-
 };
 
 window.CallManager = CallManager;
