@@ -1,5 +1,5 @@
 // js/webrtc-core.js - COMPLETE WITH DISCONNECT HANDLING AND CAMERA SWITCHING
-// MODIFIED: Adds STUN → TURN fallback for VPN connections
+// MODIFIED: Aggressive TURN prioritization for VPN connections
 const WebRTCManager = {
     // Camera properties
     hasMultipleCameras: false,
@@ -11,19 +11,34 @@ const WebRTCManager = {
         console.log('🔗 Creating peer connection...');
         DebugConsole?.info('WebRTC', 'Creating peer connection');
         
-        // ===== MODIFIED: Use ICE servers from CONFIG.peerConfig (includes TURN) =====
+        // ===== MODIFIED: Use ICE servers from CONFIG.peerConfig =====
         let iceServers = CONFIG.peerConfig?.iceServers || [
-            // Fallback to STUN only if config fails
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "stun:stun1.l.google.com:19302" }
         ];
         
-        // Log what servers we're using
-        console.log('🔧 ICE servers:', iceServers.map(s => s.urls).join(', '));
+        // ===== ADDED: Separate TURN and STUN servers =====
+        const turnServers = iceServers.filter(s => 
+            s.urls && (s.urls.includes('turn:') || s.urls.includes('turns:'))
+        );
+        
+        const stunServers = iceServers.filter(s => 
+            s.urls && s.urls.includes('stun:')
+        );
+        
+        // ===== ADDED: Prioritize TURN servers by putting them first =====
+        // This makes WebRTC try TURN before STUN
+        const prioritizedServers = [...turnServers, ...stunServers];
+        
+        console.log('🔧 TURN servers:', turnServers.length);
+        console.log('🔧 STUN servers:', stunServers.length);
+        console.log('🔧 Total ICE servers:', prioritizedServers.map(s => s.urls).join(', '));
         
         const config = {
-            iceServers: iceServers,
+            iceServers: prioritizedServers,
             iceCandidatePoolSize: 10,
+            // ===== ADDED: Set ICE transport policy to prioritize relay =====
+            iceTransportPolicy: "all", // Keep as "all" but TURN is first in list
             // Audio-specific optimizations
             sdpSemantics: 'unified-plan',
             bundlePolicy: 'max-bundle',
@@ -34,88 +49,62 @@ const WebRTCManager = {
         CONFIG.peerConnection = new RTCPeerConnection(config);
         DebugConsole?.info('WebRTC', 'Peer connection created');
         
-        // ===== ADDED: Connection timeout to detect STUN failure =====
+        // ===== ADDED: Aggressive connection monitoring =====
         if (CONFIG.connectionTimeout) {
             clearTimeout(CONFIG.connectionTimeout);
         }
+        if (CONFIG.iceTimeout) {
+            clearTimeout(CONFIG.iceTimeout);
+        }
         
-        // Start a 10-second timer to detect if connection fails
+        // Track connection state
+        CONFIG.hasRelayCandidates = false;
+        CONFIG.iceRestartAttempted = false;
+        
+        // Start a 5-second timer to check if we have any relay candidates
+        CONFIG.relayCheckTimeout = setTimeout(() => {
+            if (!CONFIG.hasRelayCandidates && turnServers.length > 0) {
+                console.log('⚠️ No relay candidates generated - TURN servers may be unreachable');
+                DebugConsole?.warning('WebRTC', 'No relay candidates - TURN may be blocked');
+            }
+        }, 5000);
+        
+        // Start a 8-second timer to check if we're stuck in ICE checking
+        CONFIG.iceTimeout = setTimeout(() => {
+            if (CONFIG.peerConnection && 
+                CONFIG.peerConnection.iceConnectionState === 'checking' &&
+                !CONFIG.iceRestartAttempted) {
+                
+                console.log('⏰ ICE stuck in checking - attempting restart with relay priority');
+                DebugConsole?.warning('WebRTC', 'ICE stuck, forcing restart');
+                
+                CONFIG.iceRestartAttempted = true;
+                this.restartIceWithRelay();
+            }
+        }, 8000);
+        
+        // Start a 12-second timer for full connection timeout
         CONFIG.connectionTimeout = setTimeout(() => {
             if (CONFIG.peerConnection && 
-                CONFIG.peerConnection.iceConnectionState !== 'connected' && 
-                CONFIG.peerConnection.iceConnectionState !== 'completed') {
+                CONFIG.peerConnection.connectionState !== 'connected' &&
+                CONFIG.peerConnection.iceConnectionState !== 'connected') {
                 
-                console.log('⏰ STUN connection timeout - attempting TURN-only fallback...');
-                DebugConsole?.warning('WebRTC', 'STUN timeout, switching to TURN-only');
+                console.log('⏰ Connection timeout - attempting TURN-only fallback...');
+                DebugConsole?.warning('WebRTC', 'Connection timeout, switching to TURN-only');
                 
-                // Store the target info for restart
-                const targetId = CONFIG.targetSocketId;
-                const targetName = CONFIG.targetUsername;
-                const wasInitiator = CONFIG.isInitiator;
-                
-                // Clean up current connection
-                if (CONFIG.peerConnection) {
-                    CONFIG.peerConnection.close();
-                    CONFIG.peerConnection = null;
-                }
-                
-                // Create new connection with TURN-only policy
-                const turnOnlyServers = iceServers.filter(s => 
-                    s.urls && (s.urls.includes('turn:') || s.urls.includes('turns:'))
-                );
-                
-                if (turnOnlyServers.length > 0) {
-                    console.log('🔄 Reconnecting with TURN-only servers:', turnOnlyServers.map(s => s.urls).join(', '));
-                    
-                    const turnConfig = {
-                        iceServers: turnOnlyServers,
-                        iceTransportPolicy: "relay", // Force TURN only
-                        iceCandidatePoolSize: 10,
-                        sdpSemantics: 'unified-plan',
-                        bundlePolicy: 'max-bundle',
-                        rtcpMuxPolicy: 'require'
-                    };
-                    
-                    CONFIG.peerConnection = new RTCPeerConnection(turnConfig);
-                    
-                    // Re-initialize the connection with the same settings
-                    CONFIG.forceRelay = true;
-                    
-                    // Re-add local tracks
-                    if (CONFIG.localStream && CONFIG.hasMediaPermissions) {
-                        CONFIG.localStream.getTracks().forEach(track => {
-                            CONFIG.peerConnection.addTrack(track, CONFIG.localStream);
-                        });
-                    }
-                    
-                    // Set up event handlers again
-                    WebRTCManager.setupPeerConnectionHandlers();
-                    
-                    // Restart the call
-                    if (wasInitiator && targetId) {
-                        setTimeout(() => {
-                            WebRTCManager.createAndSendOffer();
-                        }, 500);
-                    }
-                    
-                    UIManager.showStatus('Switching to relay mode...');
-                } else {
-                    console.log('❌ No TURN servers available for fallback');
-                    CallManager.cleanupCall();
-                    UIManager.showError('Connection failed - no relay available');
-                }
+                this.fallbackToTurnOnly(turnServers);
             }
-        }, 10000); // 10 second timeout
+        }, 12000);
         // ===== END ADDITION =====
         
         // CRITICAL: Initialize remote stream
         CONFIG.remoteStream = new MediaStream();
         DebugConsole?.info('WebRTC', 'Remote stream initialized');
         
-        // Set up remote video element - ENSURE AUDIO IS NOT MUTED
+        // Set up remote video element
         if (CONFIG.elements.remoteVideo) {
             CONFIG.elements.remoteVideo.srcObject = CONFIG.remoteStream;
-            CONFIG.elements.remoteVideo.muted = false;  // THIS IS KEY FOR AUDIO
+            CONFIG.elements.remoteVideo.muted = false;
             CONFIG.elements.remoteVideo.volume = 1.0;
             DebugConsole?.info('WebRTC', 'Remote video element configured');
         }
@@ -136,11 +125,10 @@ const WebRTCManager = {
         if (CONFIG.localStream && CONFIG.hasMediaPermissions) {
             const audioTracks = CONFIG.localStream.getAudioTracks();
             
-            // Add audio tracks FIRST (most important)
+            // Add audio tracks FIRST
             if (audioTracks.length > 0) {
                 audioTracks.forEach(track => {
                     try {
-                        // Ensure audio track is enabled
                         track.enabled = true;
                         CONFIG.peerConnection.addTrack(track, CONFIG.localStream);
                         console.log(`✅ Added AUDIO track: ${track.id.substring(0, 10)}...`);
@@ -169,14 +157,14 @@ const WebRTCManager = {
         }
         
         // Set up all peer connection handlers
-        this.setupPeerConnectionHandlers();
+        this.setupPeerConnectionHandlers(turnServers);
         
         console.log('✅ Peer connection created');
         DebugConsole?.success('WebRTC', 'Peer connection created successfully');
     },
     
-    // ===== ADDED: Separate method to set up handlers (for reconnection) =====
-    setupPeerConnectionHandlers() {
+    // ===== ADDED: Setup handlers with turnServers parameter =====
+    setupPeerConnectionHandlers(turnServers) {
         if (!CONFIG.peerConnection) return;
         
         // Handle incoming tracks
@@ -218,7 +206,6 @@ const WebRTCManager = {
         // ICE candidate handling with enhanced logging
         CONFIG.peerConnection.onicecandidate = (event) => {
             if (event.candidate && CONFIG.targetSocketId) {
-                // Log candidate type for debugging
                 const candidateStr = event.candidate.candidate;
                 const isRelay = candidateStr.includes('relay');
                 const isSrflx = candidateStr.includes('srflx');
@@ -226,10 +213,12 @@ const WebRTCManager = {
                 
                 if (isRelay) {
                     console.log('🔄 RELAY candidate generated (TURN)');
-                    // Clear timeout since relay is working
-                    if (CONFIG.connectionTimeout) {
-                        clearTimeout(CONFIG.connectionTimeout);
-                        CONFIG.connectionTimeout = null;
+                    CONFIG.hasRelayCandidates = true;
+                    
+                    // Clear the relay check timeout since we got one
+                    if (CONFIG.relayCheckTimeout) {
+                        clearTimeout(CONFIG.relayCheckTimeout);
+                        CONFIG.relayCheckTimeout = null;
                     }
                 } else if (isSrflx) {
                     console.log('🌐 STUN candidate generated');
@@ -250,11 +239,19 @@ const WebRTCManager = {
             console.log('🔗 Connection state:', CONFIG.peerConnection.connectionState);
             DebugConsole?.info('WebRTC', `Connection state: ${CONFIG.peerConnection.connectionState}`);
             
-            // Clear timeout on successful connection
+            // Clear all timeouts on successful connection
             if (CONFIG.peerConnection.connectionState === 'connected') {
                 if (CONFIG.connectionTimeout) {
                     clearTimeout(CONFIG.connectionTimeout);
                     CONFIG.connectionTimeout = null;
+                }
+                if (CONFIG.iceTimeout) {
+                    clearTimeout(CONFIG.iceTimeout);
+                    CONFIG.iceTimeout = null;
+                }
+                if (CONFIG.relayCheckTimeout) {
+                    clearTimeout(CONFIG.relayCheckTimeout);
+                    CONFIG.relayCheckTimeout = null;
                 }
             }
             
@@ -270,6 +267,8 @@ const WebRTCManager = {
                                     console.log('🔄 Connected via TURN relay (VPN friendly)');
                                 } else if (report.localCandidateType === 'srflx' || report.remoteCandidateType === 'srflx') {
                                     console.log('🌐 Connected via STUN');
+                                } else if (report.localCandidateType === 'host' || report.remoteCandidateType === 'host') {
+                                    console.log('🏠 Connected via host (same network)');
                                 }
                             }
                         });
@@ -340,6 +339,10 @@ const WebRTCManager = {
                     clearTimeout(CONFIG.connectionTimeout);
                     CONFIG.connectionTimeout = null;
                 }
+                if (CONFIG.iceTimeout) {
+                    clearTimeout(CONFIG.iceTimeout);
+                    CONFIG.iceTimeout = null;
+                }
             }
             
             if (CONFIG.peerConnection.iceConnectionState === 'disconnected') {
@@ -361,6 +364,90 @@ const WebRTCManager = {
         };
     },
     
+    // ===== ADDED: Restart ICE with relay priority =====
+    async restartIceWithRelay() {
+        if (!CONFIG.peerConnection) return;
+        
+        try {
+            console.log('🔄 Attempting ICE restart with relay priority');
+            
+            // Create new offer with ICE restart
+            const offer = await CONFIG.peerConnection.createOffer({ 
+                iceRestart: true 
+            });
+            
+            await CONFIG.peerConnection.setLocalDescription(offer);
+            
+            // Send the new offer
+            if (CONFIG.targetSocketId) {
+                WebSocketClient.sendToServer({
+                    type: 'offer',
+                    targetSocketId: CONFIG.targetSocketId,
+                    offer: offer,
+                    sender: CONFIG.myUsername
+                });
+                console.log('✅ ICE restart offer sent');
+            }
+        } catch (error) {
+            console.error('❌ ICE restart failed:', error);
+        }
+    },
+    
+    // ===== ADDED: Fallback to TURN-only mode =====
+    async fallbackToTurnOnly(turnServers) {
+        if (turnServers.length === 0) {
+            console.log('❌ No TURN servers available for fallback');
+            CallManager.cleanupCall();
+            UIManager.showError('Connection failed - no relay available');
+            return;
+        }
+        
+        // Store current call info
+        const targetId = CONFIG.targetSocketId;
+        const targetName = CONFIG.targetUsername;
+        const wasInitiator = CONFIG.isInitiator;
+        
+        // Clean up current connection
+        if (CONFIG.peerConnection) {
+            CONFIG.peerConnection.close();
+            CONFIG.peerConnection = null;
+        }
+        
+        console.log('🔄 Falling back to TURN-only servers:', turnServers.map(s => s.urls).join(', '));
+        
+        const turnConfig = {
+            iceServers: turnServers,
+            iceTransportPolicy: "relay", // Force TURN only
+            iceCandidatePoolSize: 10,
+            sdpSemantics: 'unified-plan',
+            bundlePolicy: 'max-bundle',
+            rtcpMuxPolicy: 'require'
+        };
+        
+        // Create new connection with TURN only
+        CONFIG.peerConnection = new RTCPeerConnection(turnConfig);
+        CONFIG.forceRelay = true;
+        
+        // Re-add tracks
+        if (CONFIG.localStream && CONFIG.hasMediaPermissions) {
+            CONFIG.localStream.getTracks().forEach(track => {
+                CONFIG.peerConnection.addTrack(track, CONFIG.localStream);
+            });
+        }
+        
+        // Set up handlers again
+        this.setupPeerConnectionHandlers(turnServers);
+        
+        UIManager.showStatus('Switching to relay mode...');
+        
+        // Restart the call
+        if (wasInitiator && targetId) {
+            setTimeout(() => {
+                this.createAndSendOffer();
+            }, 500);
+        }
+    },
+    
     async createAndSendOffer() {
         if (!CONFIG.peerConnection || !CONFIG.targetSocketId) {
             console.error('No peer connection or target');
@@ -377,20 +464,14 @@ const WebRTCManager = {
                 offerToReceiveVideo: true
             });
             
-            // Check SDP for audio
             if (offer.sdp) {
                 const hasAudio = offer.sdp.includes('m=audio');
                 console.log(`📄 SDP - Has audio: ${hasAudio ? '✅' : '❌'}`);
                 DebugConsole?.info('WebRTC', `Offer SDP - Audio: ${hasAudio ? 'Yes' : 'No'}`);
                 
-                // Log audio codecs
                 if (offer.sdp.includes('opus')) {
                     console.log('  Using Opus codec');
                     DebugConsole?.info('WebRTC', 'Using Opus audio codec');
-                }
-                if (offer.sdp.includes('ISAC')) {
-                    console.log('  Using ISAC codec');
-                    DebugConsole?.info('WebRTC', 'Using ISAC audio codec');
                 }
             }
             
@@ -538,9 +619,7 @@ const WebRTCManager = {
 
 // ========== CAMERA DETECTION AND SWITCHING ==========
 
-// Initialize camera detection - called AFTER stream exists
 async initCameras() {
-    // Don't initialize twice
     if (this.cameraInitialized) {
         console.log('Camera already initialized');
         return;
@@ -549,23 +628,15 @@ async initCameras() {
     console.log('📱 Initializing camera system...');
     DebugConsole?.info('Camera', 'Initializing camera system');
     
-    // Wait for local stream to be available (but don't modify it)
     const streamReady = await this.waitForStream();
     if (!streamReady) {
         console.warn('No local stream available for camera initialization');
         return;
     }
     
-    // Detect available cameras (this doesn't affect the stream)
     await this.detectCameras();
-    
-    // Setup click handlers (these just add event listeners)
     this.setupCameraClickHandlers();
-    
-    // Show camera indicator
     this.updateCameraIndicator();
-    
-    // Ensure video is actually playing
     this.ensureVideoDisplay();
     
     this.cameraInitialized = true;
@@ -573,7 +644,6 @@ async initCameras() {
     DebugConsole?.success('Camera', 'Camera system initialized');
 },
 
-// Ensure video is displayed properly
 ensureVideoDisplay() {
     console.log('🔍 Ensuring video display...');
     
@@ -588,11 +658,9 @@ ensureVideoDisplay() {
         return;
     }
     
-    // Force the video element to use the stream
     localVideo.srcObject = CONFIG.localStream;
     localVideo.muted = true;
     
-    // Try to play
     localVideo.play()
         .then(() => {
             console.log('✅ Local video playing');
@@ -600,14 +668,12 @@ ensureVideoDisplay() {
         })
         .catch(e => {
             console.log('Local video play error:', e);
-            // Retry after a delay
             setTimeout(() => {
                 localVideo.play().catch(console.log);
             }, 500);
         });
 },
 
-// Wait for stream to be available
 waitForStream() {
     return new Promise((resolve) => {
         if (CONFIG.localStream && CONFIG.localStream.getVideoTracks().length > 0) {
@@ -618,7 +684,7 @@ waitForStream() {
         
         console.log('Waiting for local stream...');
         let attempts = 0;
-        const maxAttempts = 20; // 10 seconds total (500ms * 20)
+        const maxAttempts = 20;
         
         const checkInterval = setInterval(() => {
             attempts++;
@@ -635,7 +701,6 @@ waitForStream() {
     });
 },
 
-// Detect available cameras
 async detectCameras() {
     try {
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -658,7 +723,6 @@ async detectCameras() {
     }
 },
 
-// Setup click handlers for camera switching
 setupCameraClickHandlers() {
     const localVideo = document.getElementById('localVideo');
     if (!localVideo) {
@@ -666,22 +730,18 @@ setupCameraClickHandlers() {
         return;
     }
     
-    // Remove any existing listeners by cloning
     const newLocalVideo = localVideo.cloneNode(true);
     if (localVideo.parentNode) {
         localVideo.parentNode.replaceChild(newLocalVideo, localVideo);
         
-        // Add click handler to new video
         newLocalVideo.addEventListener('click', (e) => {
             e.stopPropagation();
             this.handleCameraClick();
         });
         
-        // Visual indicator
         newLocalVideo.style.cursor = 'pointer';
         newLocalVideo.title = 'Click to switch camera';
         
-        // Re-attach drag handlers after a delay
         setTimeout(() => {
             if (typeof initDraggableVideo === 'function') {
                 initDraggableVideo();
@@ -689,10 +749,8 @@ setupCameraClickHandlers() {
         }, 100);
     }
     
-    // Also setup button click handler
     const switchBtn = document.getElementById('switchCameraBtn');
     if (switchBtn) {
-        // Remove old listeners by cloning
         const newBtn = switchBtn.cloneNode(true);
         if (switchBtn.parentNode) {
             switchBtn.parentNode.replaceChild(newBtn, switchBtn);
@@ -708,7 +766,6 @@ setupCameraClickHandlers() {
     console.log('Camera click handlers setup complete');
 },
 
-// Handle camera click (from video or button)
 async handleCameraClick() {
     if (this.cameraSwitchInProgress) {
         console.log('Camera switch already in progress');
@@ -729,7 +786,6 @@ async handleCameraClick() {
     await this.switchCamera();
 },
 
-// Update camera button visibility
 updateCameraButtonVisibility() {
     const switchBtn = document.getElementById('switchCameraBtn');
     if (switchBtn) {
@@ -738,11 +794,9 @@ updateCameraButtonVisibility() {
     }
 },
 
-// Update camera indicator
 updateCameraIndicator() {
     let indicator = document.getElementById('cameraIndicator');
     
-    // Create indicator if it doesn't exist
     if (!indicator) {
         indicator = document.createElement('div');
         indicator.id = 'cameraIndicator';
@@ -774,9 +828,6 @@ updateCameraIndicator() {
     }
 },
 
-// Recover video if it disappears
-
-// Enhanced recover video method
 recoverVideo() {
     console.log('🔄 Attempting to recover video...');
     
@@ -791,7 +842,6 @@ recoverVideo() {
         return false;
     }
     
-    // Check if stream has video tracks
     const videoTracks = CONFIG.localStream.getVideoTracks();
     if (videoTracks.length === 0) {
         console.warn('No video tracks in stream');
@@ -801,11 +851,9 @@ recoverVideo() {
     console.log('Video track readyState:', videoTracks[0].readyState);
     console.log('Video track enabled:', videoTracks[0].enabled);
     
-    // Reattach the stream
     localVideo.srcObject = CONFIG.localStream;
     localVideo.muted = true;
     
-    // Try to play with promise handling
     const playPromise = localVideo.play();
     if (playPromise !== undefined) {
         playPromise
@@ -816,7 +864,6 @@ recoverVideo() {
             })
             .catch(error => {
                 console.log('Recovery play failed:', error);
-                // Try one more time with user interaction
                 document.addEventListener('click', function onClick() {
                     localVideo.play().catch(console.log);
                     document.removeEventListener('click', onClick);
@@ -828,8 +875,6 @@ recoverVideo() {
     return true;
 },
 
-
-// Switch camera during active call - SIMPLIFIED AND RELIABLE
 async switchCamera() {
     if (this.cameraSwitchInProgress) {
         console.log('Camera switch already in progress, skipping');
@@ -846,33 +891,24 @@ async switchCamera() {
     console.log('🔄 Attempting to switch camera from', this.currentFacingMode);
     DebugConsole?.info('Camera', 'Switching camera...');
     
-    // Show feedback
     UIManager.showStatus('Switching camera...');
     
-    // Toggle facing mode
     const newFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
     
     try {
-        // Get current audio tracks
         const audioTracks = CONFIG.localStream.getAudioTracks();
-        
-        // Get the local video element
         const localVideo = document.getElementById('localVideo');
         
-        // Stop all tracks in the current stream
         CONFIG.localStream.getTracks().forEach(track => {
             track.stop();
         });
         
-        // Clear the video element
         if (localVideo) {
             localVideo.srcObject = null;
         }
         
-        // Small delay to let hardware reset
         await new Promise(resolve => setTimeout(resolve, 300));
         
-        // Create new constraints
         const constraints = {
             audio: true,
             video: {
@@ -884,24 +920,19 @@ async switchCamera() {
         
         console.log('📷 Requesting camera with facing mode:', newFacingMode);
         
-        // Get brand new stream
         const newStream = await navigator.mediaDevices.getUserMedia(constraints);
         
-        // Update CONFIG with new stream
         CONFIG.localStream = newStream;
         
-        // Set the new stream to video element
         if (localVideo) {
             localVideo.srcObject = newStream;
             localVideo.muted = true;
             
-            // Play
             try {
                 await localVideo.play();
                 console.log('✅ Local video playing after switch');
             } catch (playError) {
                 console.log('Play error after switch:', playError);
-                // Retry once
                 setTimeout(async () => {
                     try {
                         await localVideo.play();
@@ -913,14 +944,10 @@ async switchCamera() {
             }
         }
         
-        // If in a call, we need to renegotiate
         if (CONFIG.peerConnection && CONFIG.isInCall) {
             console.log('In call, need to renegotiate after camera switch');
             
-            // Get the new video track
             const newVideoTrack = newStream.getVideoTracks()[0];
-            
-            // Replace the track in peer connection
             const senders = CONFIG.peerConnection.getSenders();
             const videoSender = senders.find(sender => 
                 sender.track && sender.track.kind === 'video'
@@ -931,7 +958,6 @@ async switchCamera() {
                 console.log('✅ Video track replaced in peer connection');
             }
             
-            // Also need to update audio tracks if they changed
             const audioSender = senders.find(sender => 
                 sender.track && sender.track.kind === 'audio'
             );
@@ -945,13 +971,9 @@ async switchCamera() {
             }
         }
         
-        // Update facing mode
         this.currentFacingMode = newFacingMode;
-        
-        // Update indicator
         this.updateCameraIndicator();
         
-        // Show success message
         const cameraIcon = newFacingMode === 'user' ? '🤳' : '📷';
         UIManager.showStatus(`${cameraIcon} ${newFacingMode === 'user' ? 'Front' : 'Rear'} camera`);
         
@@ -963,7 +985,6 @@ async switchCamera() {
         DebugConsole?.error('Camera', `Switch failed: ${error.message}`);
         UIManager.showError('Could not switch camera');
         
-        // Try to recover by requesting original camera
         try {
             console.log('Attempting to recover original camera...');
             const fallbackConstraints = {
@@ -992,29 +1013,27 @@ async switchCamera() {
     }
 },
 
-
-	
-    checkAudioState() {
-        console.log('🔍 AUDIO STATE CHECK:');
-        DebugConsole?.info('WebRTC', 'Audio state check');
-        
-        if (CONFIG.localStream) {
-            const localAudio = CONFIG.localStream.getAudioTracks();
-            console.log(`Local audio tracks: ${localAudio.length}`);
-            DebugConsole?.info('WebRTC', `Local audio tracks: ${localAudio.length}`);
-        }
-        
-        if (CONFIG.remoteStream) {
-            const remoteAudio = CONFIG.remoteStream.getAudioTracks();
-            console.log(`Remote audio tracks: ${remoteAudio.length}`);
-            DebugConsole?.info('WebRTC', `Remote audio tracks: ${remoteAudio.length}`);
-        }
-        
-        if (CONFIG.elements.remoteVideo) {
-            console.log(`Remote video muted: ${CONFIG.elements.remoteVideo.muted}`);
-            DebugConsole?.info('WebRTC', `Remote video muted: ${CONFIG.elements.remoteVideo.muted}`);
-        }
+checkAudioState() {
+    console.log('🔍 AUDIO STATE CHECK:');
+    DebugConsole?.info('WebRTC', 'Audio state check');
+    
+    if (CONFIG.localStream) {
+        const localAudio = CONFIG.localStream.getAudioTracks();
+        console.log(`Local audio tracks: ${localAudio.length}`);
+        DebugConsole?.info('WebRTC', `Local audio tracks: ${localAudio.length}`);
     }
+    
+    if (CONFIG.remoteStream) {
+        const remoteAudio = CONFIG.remoteStream.getAudioTracks();
+        console.log(`Remote audio tracks: ${remoteAudio.length}`);
+        DebugConsole?.info('WebRTC', `Remote audio tracks: ${remoteAudio.length}`);
+    }
+    
+    if (CONFIG.elements.remoteVideo) {
+        console.log(`Remote video muted: ${CONFIG.elements.remoteVideo.muted}`);
+        DebugConsole?.info('WebRTC', `Remote video muted: ${CONFIG.elements.remoteVideo.muted}`);
+    }
+}
 };
 
 window.WebRTCManager = WebRTCManager;
