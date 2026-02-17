@@ -10,17 +10,26 @@ const WebRTCManager = {
         console.log('🔗 Creating peer connection...');
         DebugConsole?.info('WebRTC', 'Creating peer connection');
         
+        // ===== MODIFIED: Use ICE servers from CONFIG.peerConfig (includes TURN) =====
+        // This ensures admin and user get the EXACT SAME servers
+        let iceServers = CONFIG.peerConfig?.iceServers || [
+            // Fallback to STUN only if config fails
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" }
+        ];
+        
+        // Log what servers we're using (for debugging) - this won't break anything
+        console.log('🔧 ICE servers:', iceServers.map(s => s.urls).join(', '));
+        
         const config = {
-            iceServers: [
-                { urls: "stun:stun.l.google.com:19302" },
-                { urls: "stun:stun1.l.google.com:19302" }
-            ],
+            iceServers: iceServers,  // Use the configured servers (includes TURN)
             iceCandidatePoolSize: 10,
             // Audio-specific optimizations
             sdpSemantics: 'unified-plan',
             bundlePolicy: 'max-bundle',
             rtcpMuxPolicy: 'require'
         };
+        // ===== END MODIFICATION =====
         
         CONFIG.peerConnection = new RTCPeerConnection(config);
         DebugConsole?.info('WebRTC', 'Peer connection created');
