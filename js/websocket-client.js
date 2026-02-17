@@ -78,7 +78,7 @@ const WebSocketClient = {
                 this.lastPingTime = Date.now();
                 this.ws.send(JSON.stringify({ type: 'ping' }));
                 //console.log('🏓 Ping sent');
-                DebugConsole?.network('WebSocket', 'Ping sent');
+                //DebugConsole?.network('WebSocket', 'Ping sent');
             }
         }, 25000); // 25 seconds - optimal for NAT timeouts
     },
@@ -312,13 +312,13 @@ const WebSocketClient = {
                     
                 case 'ping':
                     //console.log('🏓 Ping received from server');
-                    DebugConsole?.network('WebSocket', 'Ping received');
+                    //DebugConsole?.network('WebSocket', 'Ping received');
                     this.sendToServer({ type: 'pong' });
                     break;
                     
                 case 'pong':
                     //console.log('🏓 Pong received');
-                    DebugConsole?.network('WebSocket', 'Pong received');
+                    //DebugConsole?.network('WebSocket', 'Pong received');
                     if (this.lastPingTime) {
                         const latency = Date.now() - this.lastPingTime;
                         this.updateNetworkQualityFromLatency(latency);
