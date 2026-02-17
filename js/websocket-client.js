@@ -227,8 +227,7 @@ const WebSocketClient = {
                 case 'user-list':
                     UIManager.updateUsersList(message.users);
                     break;
-                case 'call-ended-confirm':
- 					break;
+                    
                 case 'user-connected':
                     console.log(`👤 User connected: ${message.user?.username}`);
                     DebugConsole?.info('Users', `User connected: ${message.user?.username}`);
