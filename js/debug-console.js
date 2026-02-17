@@ -85,6 +85,10 @@ const DebugConsole = {
         this.render();
         
         // Also log to console
+		const pingPongPattern = /ping|pong|🏓/i;
+		if (pingPongPattern.test(message)) {
+        return; // Silently ignore
+		}
         console.log(`[${category}] ${message}`);
     },
     
