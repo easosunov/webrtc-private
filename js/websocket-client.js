@@ -192,7 +192,7 @@ const WebSocketClient = {
     sendToServer(message) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             console.log('📤 Sending:', message.type, message);
-            DebugConsole?.network('WebSocket', `Sending ${message.type} to server`);
+            //DebugConsole?.network('WebSocket', `Sending ${message.type} to server`);
             this.ws.send(JSON.stringify(message));
             return true;
         } else {
@@ -207,7 +207,7 @@ const WebSocketClient = {
         try {
             const message = JSON.parse(data);
             console.log('📨 Received:', message.type, message);
-            DebugConsole?.network('WebSocket', `Received ${message.type} from server`);
+            //DebugConsole?.network('WebSocket', `Received ${message.type} from server`);
             
             switch (message.type) {
                 case 'connected':
