@@ -1,5 +1,5 @@
 // js/webrtc-core.js - COMPLETE WITH DISCONNECT HANDLING AND CAMERA SWITCHING
-// MODIFIED: Aggressive TURN prioritization for VPN connections
+// SIMPLIFIED: Removed aggressive timeouts, let WebRTC do its job naturally
 const WebRTCManager = {
     // Camera properties
     hasMultipleCameras: false,
@@ -11,91 +11,32 @@ const WebRTCManager = {
         console.log('🔗 Creating peer connection...');
         DebugConsole?.info('WebRTC', 'Creating peer connection');
         
-        // ===== MODIFIED: Use ICE servers from CONFIG.peerConfig =====
+        // Get ICE servers from config
         let iceServers = CONFIG.peerConfig?.iceServers || [
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "stun:stun1.l.google.com:19302" }
         ];
         
-        // ===== ADDED: Separate TURN and STUN servers =====
+        // Log what we're using (for debugging)
         const turnServers = iceServers.filter(s => 
             s.urls && (s.urls.includes('turn:') || s.urls.includes('turns:'))
         );
         
-        const stunServers = iceServers.filter(s => 
-            s.urls && s.urls.includes('stun:')
-        );
-        
-        // ===== ADDED: Prioritize TURN servers by putting them first =====
-        // This makes WebRTC try TURN before STUN
-        const prioritizedServers = [...turnServers, ...stunServers];
-        
-        console.log('🔧 TURN servers:', turnServers.length);
-        console.log('🔧 STUN servers:', stunServers.length);
-        console.log('🔧 Total ICE servers:', prioritizedServers.map(s => s.urls).join(', '));
+        console.log('🔧 ICE servers:', iceServers.map(s => s.urls).join(', '));
+        if (turnServers.length > 0) {
+            console.log(`🔄 TURN servers available: ${turnServers.length}`);
+        }
         
         const config = {
-            iceServers: prioritizedServers,
+            iceServers: iceServers,  // Use as-is, let WebRTC prioritize
             iceCandidatePoolSize: 10,
-            // ===== ADDED: Set ICE transport policy to prioritize relay =====
-            iceTransportPolicy: "all", // Keep as "all" but TURN is first in list
-            // Audio-specific optimizations
             sdpSemantics: 'unified-plan',
             bundlePolicy: 'max-bundle',
             rtcpMuxPolicy: 'require'
         };
-        // ===== END MODIFICATION =====
         
         CONFIG.peerConnection = new RTCPeerConnection(config);
         DebugConsole?.info('WebRTC', 'Peer connection created');
-        
-        // ===== ADDED: Aggressive connection monitoring =====
-        if (CONFIG.connectionTimeout) {
-            clearTimeout(CONFIG.connectionTimeout);
-        }
-        if (CONFIG.iceTimeout) {
-            clearTimeout(CONFIG.iceTimeout);
-        }
-        
-        // Track connection state
-        CONFIG.hasRelayCandidates = false;
-        CONFIG.iceRestartAttempted = false;
-        
-        // Start a 5-second timer to check if we have any relay candidates
-        CONFIG.relayCheckTimeout = setTimeout(() => {
-            if (!CONFIG.hasRelayCandidates && turnServers.length > 0) {
-                console.log('⚠️ No relay candidates generated - TURN servers may be unreachable');
-                DebugConsole?.warning('WebRTC', 'No relay candidates - TURN may be blocked');
-            }
-        }, 5000);
-        
-        // Start a 8-second timer to check if we're stuck in ICE checking
-        CONFIG.iceTimeout = setTimeout(() => {
-            if (CONFIG.peerConnection && 
-                CONFIG.peerConnection.iceConnectionState === 'checking' &&
-                !CONFIG.iceRestartAttempted) {
-                
-                console.log('⏰ ICE stuck in checking - attempting restart with relay priority');
-                DebugConsole?.warning('WebRTC', 'ICE stuck, forcing restart');
-                
-                CONFIG.iceRestartAttempted = true;
-                this.restartIceWithRelay();
-            }
-        }, 8000);
-        
-        // Start a 12-second timer for full connection timeout
-        CONFIG.connectionTimeout = setTimeout(() => {
-            if (CONFIG.peerConnection && 
-                CONFIG.peerConnection.connectionState !== 'connected' &&
-                CONFIG.peerConnection.iceConnectionState !== 'connected') {
-                
-                console.log('⏰ Connection timeout - attempting TURN-only fallback...');
-                DebugConsole?.warning('WebRTC', 'Connection timeout, switching to TURN-only');
-                
-                this.fallbackToTurnOnly(turnServers);
-            }
-        }, 12000);
-        // ===== END ADDITION =====
         
         // CRITICAL: Initialize remote stream
         CONFIG.remoteStream = new MediaStream();
@@ -157,14 +98,14 @@ const WebRTCManager = {
         }
         
         // Set up all peer connection handlers
-        this.setupPeerConnectionHandlers(turnServers);
+        this.setupPeerConnectionHandlers();
         
         console.log('✅ Peer connection created');
         DebugConsole?.success('WebRTC', 'Peer connection created successfully');
     },
     
-    // ===== ADDED: Setup handlers with turnServers parameter =====
-    setupPeerConnectionHandlers(turnServers) {
+    // Setup handlers (simplified - no timeouts)
+    setupPeerConnectionHandlers() {
         if (!CONFIG.peerConnection) return;
         
         // Handle incoming tracks
@@ -203,27 +144,17 @@ const WebRTCManager = {
             }
         };
         
-        // ICE candidate handling with enhanced logging
+        // ICE candidate handling (simplified logging)
         CONFIG.peerConnection.onicecandidate = (event) => {
             if (event.candidate && CONFIG.targetSocketId) {
+                // Minimal logging - just the type
                 const candidateStr = event.candidate.candidate;
-                const isRelay = candidateStr.includes('relay');
-                const isSrflx = candidateStr.includes('srflx');
-                const isHost = candidateStr.includes('host');
-                
-                if (isRelay) {
-                    console.log('🔄 RELAY candidate generated (TURN)');
-                    CONFIG.hasRelayCandidates = true;
-                    
-                    // Clear the relay check timeout since we got one
-                    if (CONFIG.relayCheckTimeout) {
-                        clearTimeout(CONFIG.relayCheckTimeout);
-                        CONFIG.relayCheckTimeout = null;
-                    }
-                } else if (isSrflx) {
-                    console.log('🌐 STUN candidate generated');
-                } else if (isHost) {
-                    console.log('🏠 Host candidate generated');
+                if (candidateStr.includes('relay')) {
+                    console.log('🔄 RELAY candidate');
+                } else if (candidateStr.includes('srflx')) {
+                    console.log('🌐 STUN candidate');
+                } else if (candidateStr.includes('host')) {
+                    console.log('🏠 Host candidate');
                 }
                 
                 WebSocketClient.sendToServer({
@@ -234,45 +165,27 @@ const WebRTCManager = {
             }
         };
         
-        // Connection state monitoring
+        // Connection state monitoring (essential only)
         CONFIG.peerConnection.onconnectionstatechange = () => {
-            console.log('🔗 Connection state:', CONFIG.peerConnection.connectionState);
-            DebugConsole?.info('WebRTC', `Connection state: ${CONFIG.peerConnection.connectionState}`);
+            const state = CONFIG.peerConnection.connectionState;
+            console.log('🔗 Connection state:', state);
+            DebugConsole?.info('WebRTC', `Connection state: ${state}`);
             
-            // Clear all timeouts on successful connection
-            if (CONFIG.peerConnection.connectionState === 'connected') {
-                if (CONFIG.connectionTimeout) {
-                    clearTimeout(CONFIG.connectionTimeout);
-                    CONFIG.connectionTimeout = null;
-                }
-                if (CONFIG.iceTimeout) {
-                    clearTimeout(CONFIG.iceTimeout);
-                    CONFIG.iceTimeout = null;
-                }
-                if (CONFIG.relayCheckTimeout) {
-                    clearTimeout(CONFIG.relayCheckTimeout);
-                    CONFIG.relayCheckTimeout = null;
-                }
-            }
-            
-            switch (CONFIG.peerConnection.connectionState) {
+            switch (state) {
                 case 'connected':
                     console.log('✅ PEER CONNECTION CONNECTED!');
                     
-                    // Check connection type
+                    // Optional: Log connection type
                     CONFIG.peerConnection.getStats().then(stats => {
                         stats.forEach(report => {
                             if (report.type === 'candidate-pair' && report.state === 'succeeded') {
                                 if (report.localCandidateType === 'relay' || report.remoteCandidateType === 'relay') {
-                                    console.log('🔄 Connected via TURN relay (VPN friendly)');
-                                } else if (report.localCandidateType === 'srflx' || report.remoteCandidateType === 'srflx') {
-                                    console.log('🌐 Connected via STUN');
-                                } else if (report.localCandidateType === 'host' || report.remoteCandidateType === 'host') {
-                                    console.log('🏠 Connected via host (same network)');
+                                    console.log('🔄 Connected via TURN relay');
+                                    DebugConsole?.info('WebRTC', 'Using TURN relay');
                                 }
                             }
                         });
-                    }).catch(err => console.log('Could not get stats:', err));
+                    }).catch(() => {});
                     
                     DebugConsole?.success('WebRTC', 'Peer connection connected');
                     CONFIG.isInCall = true;
@@ -282,38 +195,22 @@ const WebRTCManager = {
                     
                     setTimeout(() => {
                         const audioTracks = CONFIG.remoteStream.getAudioTracks();
-                        console.log(`🔊 Connected! Remote audio tracks: ${audioTracks.length}`);
-                        DebugConsole?.info('WebRTC', `Connected! Remote audio tracks: ${audioTracks.length}`);
-                        DebugConsole?.success('Call', 'Call connected successfully');
+                        console.log(`🔊 Remote audio tracks: ${audioTracks.length}`);
                     }, 500);
                     break;
                     
                 case 'disconnected':
                 case 'failed':
-                    console.log(`⚠️ Peer connection ${CONFIG.peerConnection.connectionState}`);
-                    DebugConsole?.warning('WebRTC', `Peer connection ${CONFIG.peerConnection.connectionState}`);
+                    console.log(`⚠️ Connection ${state}`);
+                    DebugConsole?.warning('WebRTC', `Connection ${state}`);
                     
+                    // Give it a chance to recover
                     setTimeout(() => {
                         if (CONFIG.peerConnection && 
                             (CONFIG.peerConnection.connectionState === 'disconnected' || 
                              CONFIG.peerConnection.connectionState === 'failed')) {
-                            console.log('❌ Connection not recovered, cleaning up');
+                            console.log('❌ Connection not recovered');
                             DebugConsole?.call('Call', 'Call ended unexpectedly');
-                            
-                            if (CONFIG.isAdmin) {
-                                const adminHangupBtn = document.getElementById('adminHangupBtn');
-                                if (adminHangupBtn) {
-                                    adminHangupBtn.disabled = true;
-                                    adminHangupBtn.className = 'btn-hangup';
-                                }
-                            } else {
-                                const userHangupBtn = document.querySelector('.btn-hangup');
-                                if (userHangupBtn) {
-                                    userHangupBtn.disabled = true;
-                                    userHangupBtn.className = 'btn-hangup';
-                                }
-                            }
-                            
                             CallManager.cleanupCall();
                             UIManager.showStatus('Call disconnected');
                         }
@@ -330,122 +227,22 @@ const WebRTCManager = {
         
         // ICE connection state monitoring
         CONFIG.peerConnection.oniceconnectionstatechange = () => {
-            console.log('🧊 ICE connection state:', CONFIG.peerConnection.iceConnectionState);
-            DebugConsole?.network('WebRTC', `ICE connection state: ${CONFIG.peerConnection.iceConnectionState}`);
+            const state = CONFIG.peerConnection.iceConnectionState;
+            console.log('🧊 ICE state:', state);
+            DebugConsole?.network('WebRTC', `ICE state: ${state}`);
             
-            if (CONFIG.peerConnection.iceConnectionState === 'connected') {
-                console.log('✅ ICE connected - network path established');
-                if (CONFIG.connectionTimeout) {
-                    clearTimeout(CONFIG.connectionTimeout);
-                    CONFIG.connectionTimeout = null;
-                }
-                if (CONFIG.iceTimeout) {
-                    clearTimeout(CONFIG.iceTimeout);
-                    CONFIG.iceTimeout = null;
-                }
-            }
-            
-            if (CONFIG.peerConnection.iceConnectionState === 'disconnected') {
-                console.log('⚠️ ICE disconnected, waiting for recovery...');
-            }
-            
-            if (CONFIG.peerConnection.iceConnectionState === 'failed') {
-                console.log('❌ ICE failed - connection dead');
-                DebugConsole?.error('WebRTC', 'ICE connection failed');
+            if (state === 'failed') {
+                console.log('❌ ICE failed');
+                DebugConsole?.error('WebRTC', 'ICE failed');
                 
                 setTimeout(() => {
-                    if (CONFIG.peerConnection && 
-                        CONFIG.peerConnection.iceConnectionState === 'failed') {
+                    if (CONFIG.peerConnection?.iceConnectionState === 'failed') {
                         CallManager.cleanupCall();
                         UIManager.showStatus('Call disconnected (network error)');
                     }
                 }, 1000);
             }
         };
-    },
-    
-    // ===== ADDED: Restart ICE with relay priority =====
-    async restartIceWithRelay() {
-        if (!CONFIG.peerConnection) return;
-        
-        try {
-            console.log('🔄 Attempting ICE restart with relay priority');
-            
-            // Create new offer with ICE restart
-            const offer = await CONFIG.peerConnection.createOffer({ 
-                iceRestart: true 
-            });
-            
-            await CONFIG.peerConnection.setLocalDescription(offer);
-            
-            // Send the new offer
-            if (CONFIG.targetSocketId) {
-                WebSocketClient.sendToServer({
-                    type: 'offer',
-                    targetSocketId: CONFIG.targetSocketId,
-                    offer: offer,
-                    sender: CONFIG.myUsername
-                });
-                console.log('✅ ICE restart offer sent');
-            }
-        } catch (error) {
-            console.error('❌ ICE restart failed:', error);
-        }
-    },
-    
-    // ===== ADDED: Fallback to TURN-only mode =====
-    async fallbackToTurnOnly(turnServers) {
-        if (turnServers.length === 0) {
-            console.log('❌ No TURN servers available for fallback');
-            CallManager.cleanupCall();
-            UIManager.showError('Connection failed - no relay available');
-            return;
-        }
-        
-        // Store current call info
-        const targetId = CONFIG.targetSocketId;
-        const targetName = CONFIG.targetUsername;
-        const wasInitiator = CONFIG.isInitiator;
-        
-        // Clean up current connection
-        if (CONFIG.peerConnection) {
-            CONFIG.peerConnection.close();
-            CONFIG.peerConnection = null;
-        }
-        
-        console.log('🔄 Falling back to TURN-only servers:', turnServers.map(s => s.urls).join(', '));
-        
-        const turnConfig = {
-            iceServers: turnServers,
-            iceTransportPolicy: "relay", // Force TURN only
-            iceCandidatePoolSize: 10,
-            sdpSemantics: 'unified-plan',
-            bundlePolicy: 'max-bundle',
-            rtcpMuxPolicy: 'require'
-        };
-        
-        // Create new connection with TURN only
-        CONFIG.peerConnection = new RTCPeerConnection(turnConfig);
-        CONFIG.forceRelay = true;
-        
-        // Re-add tracks
-        if (CONFIG.localStream && CONFIG.hasMediaPermissions) {
-            CONFIG.localStream.getTracks().forEach(track => {
-                CONFIG.peerConnection.addTrack(track, CONFIG.localStream);
-            });
-        }
-        
-        // Set up handlers again
-        this.setupPeerConnectionHandlers(turnServers);
-        
-        UIManager.showStatus('Switching to relay mode...');
-        
-        // Restart the call
-        if (wasInitiator && targetId) {
-            setTimeout(() => {
-                this.createAndSendOffer();
-            }, 500);
-        }
     },
     
     async createAndSendOffer() {
@@ -618,6 +415,7 @@ const WebRTCManager = {
     
 
 // ========== CAMERA DETECTION AND SWITCHING ==========
+// (All camera methods remain exactly the same - they work perfectly)
 
 async initCameras() {
     if (this.cameraInitialized) {
