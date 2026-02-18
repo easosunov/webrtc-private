@@ -40,6 +40,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // ========== ICE SERVER CONFIGURATION ==========
+
+// ========== ICE SERVER CONFIGURATION ==========
 async function loadIceServers() {
     // Priority list of ICE server sources
     const iceSources = [
@@ -52,6 +54,84 @@ async function loadIceServers() {
             name: 'direct-twilio',
             getServers: getDirectTwilioServers,
             timeout: 7000
+        },
+        {
+            name: 'tcp-fallback',  // TCP-only servers for firewalled networks
+            getServers: async () => {
+                console.log('🌐 Attempting TCP fallback TURN servers...');
+                
+                // First try to get Twilio credentials if available
+                let twilioUsername = '';
+                let twilioPassword = '';
+                
+                try {
+                    // Try to fetch from your cloudflare worker first
+                    const response = await fetch('https://turn-token.easosunov.workers.dev/ice', {
+                        signal: AbortSignal.timeout(3000)
+                    });
+                    const data = await response.json();
+                    const twilioTurn = data.iceServers.find(s => 
+                        s.urls && s.urls.includes('turn:')
+                    );
+                    if (twilioTurn) {
+                        twilioUsername = twilioTurn.username || '';
+                        twilioPassword = twilioTurn.credential || '';
+                    }
+                } catch (e) {
+                    console.log('Could not fetch Twilio credentials for TCP fallback');
+                }
+                
+                // Return TCP-enabled TURN servers
+                return [
+                    // Standard STUN (UDP)
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    
+                    // Twilio TURN with TCP (if credentials available)
+                    ...(twilioUsername ? [
+                        { 
+                            urls: 'turn:global.turn.twilio.com:443?transport=tcp',
+                            username: twilioUsername,
+                            credential: twilioPassword
+                        },
+                        { 
+                            urls: 'turn:global.turn.twilio.com:3478?transport=tcp',
+                            username: twilioUsername,
+                            credential: twilioPassword
+                        }
+                    ] : []),
+                    
+                    // Public TURN servers (free, but less reliable)
+                    {
+                        urls: 'turn:openrelay.metered.ca:80?transport=tcp',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    },
+                    {
+                        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    },
+                    {
+                        urls: 'turn:openrelay.metered.ca:443?transport=udp', // UDP fallback
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    },
+                    
+                    // Cloudflare TURN (if available)
+                    {
+                        urls: 'turn:turn.cloudflare.com:443?transport=tcp',
+                        username: 'cf-turn',
+                        credential: 'cf-turn'  // Note: Cloudflare TURN may need proper credentials
+                    },
+                    
+                    // Additional public STUN for redundancy
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    { urls: 'stun:stun3.l.google.com:19302' },
+                    { urls: 'stun:stun4.l.google.com:19302' }
+                ];
+            },
+            timeout: 8000
         }
     ];
     
@@ -67,13 +147,25 @@ async function loadIceServers() {
             }
             
             if (iceServers && iceServers.length > 0) {
+                // Log what we got
+                const turnCount = iceServers.filter(s => 
+                    s.urls && (s.urls.includes('turn:') || s.urls.includes('turns:'))
+                ).length;
+                const tcpTurnCount = iceServers.filter(s => 
+                    s.urls && s.urls.includes('?transport=tcp')
+                ).length;
+                
+                console.log(`✓ ICE servers from ${source.name}: ${iceServers.length} servers (${turnCount} TURN, ${tcpTurnCount} TCP)`);
+                
                 CONFIG.peerConfig = {
                     iceServers: iceServers,
                     iceCandidatePoolSize: 10,
                     iceTransportPolicy: 'all'
                 };
                 CONFIG.iceSource = source.name;
-                console.log(`✓ ICE servers from ${source.name}: ${iceServers.length} servers`);
+                
+                // Store for debugging
+                console.log('📡 Active ICE servers:', iceServers.map(s => s.urls).join(', '));
                 return;
             }
         } catch (error) {
@@ -82,8 +174,8 @@ async function loadIceServers() {
         }
     }
     
-    // Fallback: Public STUN servers
-    console.log('Using public STUN fallback');
+    // Ultimate fallback: Public STUN only
+    console.log('⚠️ All ICE sources failed, using public STUN fallback');
     CONFIG.peerConfig = {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
@@ -96,6 +188,7 @@ async function loadIceServers() {
     };
     CONFIG.iceSource = 'public-stun';
 }
+
 
 async function getDirectTwilioServers() {
     // Direct Twilio API call (requires credentials server-side)
