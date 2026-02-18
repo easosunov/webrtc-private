@@ -39,11 +39,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-// ========== ICE SERVER CONFIGURATION ==========
+
 
 // ========== ICE SERVER CONFIGURATION ==========
+
 async function loadIceServers() {
-    // Priority list of ICE server sources
     const iceSources = [
         {
             name: 'cloudflare-worker',
@@ -56,89 +56,59 @@ async function loadIceServers() {
             timeout: 7000
         },
         {
-            name: 'tcp-fallback',  // TCP-only servers for firewalled networks
+            name: 'multi-provider-fallback',
             getServers: async () => {
-                console.log('🌐 Attempting TCP fallback TURN servers...');
+                console.log('🌐 Attempting multi-provider TURN servers...');
                 
-                // First try to get Twilio credentials if available
-                let twilioUsername = '';
-                let twilioPassword = '';
-                
+                // Try to get Twilio credentials first
+                let twilioUsername = '', twilioPassword = '';
                 try {
-                    // Try to fetch from your cloudflare worker first
                     const response = await fetch('https://turn-token.easosunov.workers.dev/ice', {
                         signal: AbortSignal.timeout(3000)
                     });
                     const data = await response.json();
-                    const twilioTurn = data.iceServers.find(s => 
-                        s.urls && s.urls.includes('turn:')
-                    );
+                    const twilioTurn = data.iceServers.find(s => s.urls?.includes('turn:'));
                     if (twilioTurn) {
                         twilioUsername = twilioTurn.username || '';
                         twilioPassword = twilioTurn.credential || '';
                     }
                 } catch (e) {
-                    console.log('Could not fetch Twilio credentials for TCP fallback');
+                    console.log('Could not fetch Twilio credentials');
                 }
                 
-                // Return TCP-enabled TURN servers
+                // Return MULTIPLE TURN providers with TCP and UDP
                 return [
-                    // Standard STUN (UDP)
+                    // Standard STUN
                     { urls: 'stun:stun.l.google.com:19302' },
                     { urls: 'stun:stun1.l.google.com:19302' },
                     
-                    // Twilio TURN with TCP (if credentials available)
+                    // Twilio TURN (if available)
                     ...(twilioUsername ? [
-                        { 
-                            urls: 'turn:global.turn.twilio.com:443?transport=tcp',
-                            username: twilioUsername,
-                            credential: twilioPassword
-                        },
-                        { 
-                            urls: 'turn:global.turn.twilio.com:3478?transport=tcp',
-                            username: twilioUsername,
-                            credential: twilioPassword
-                        }
+                        { urls: `turn:global.turn.twilio.com:3478?transport=udp`, username: twilioUsername, credential: twilioPassword },
+                        { urls: `turn:global.turn.twilio.com:3478?transport=tcp`, username: twilioUsername, credential: twilioPassword },
+                        { urls: `turn:global.turn.twilio.com:443?transport=tcp`, username: twilioUsername, credential: twilioPassword }
                     ] : []),
                     
-                    // Public TURN servers (free, but less reliable)
-                    {
-                        urls: 'turn:openrelay.metered.ca:80?transport=tcp',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    },
-                    {
-                        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    },
-                    {
-                        urls: 'turn:openrelay.metered.ca:443?transport=udp', // UDP fallback
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    },
+                    // Metered.ca public TURN (TCP and UDP)
+                    { urls: 'turn:openrelay.metered.ca:80?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+                    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+                    { urls: 'turn:openrelay.metered.ca:443?transport=udp', username: 'openrelayproject', credential: 'openrelayproject' },
                     
-                    // Cloudflare TURN (if available)
-                    {
-                        urls: 'turn:turn.cloudflare.com:443?transport=tcp',
-                        username: 'cf-turn',
-                        credential: 'cf-turn'  // Note: Cloudflare TURN may need proper credentials
-                    },
+                    // Cloudflare TURN (if available - may need proper credentials)
+                    // { urls: 'turn:turn.cloudflare.com:443?transport=tcp', username: 'cf', credential: 'cf' },
                     
-                    // Additional public STUN for redundancy
+                    // Additional STUN for redundancy
                     { urls: 'stun:stun2.l.google.com:19302' },
                     { urls: 'stun:stun3.l.google.com:19302' },
                     { urls: 'stun:stun4.l.google.com:19302' }
                 ];
-            },
-            timeout: 8000
+            }
         }
     ];
     
     for (const source of iceSources) {
         try {
             console.log(`Trying ICE source: ${source.name}`);
-            
             let iceServers;
             if (source.url) {
                 iceServers = await fetchWithTimeout(source.url, { timeout: source.timeout });
@@ -147,47 +117,30 @@ async function loadIceServers() {
             }
             
             if (iceServers && iceServers.length > 0) {
-                // Log what we got
-                const turnCount = iceServers.filter(s => 
-                    s.urls && (s.urls.includes('turn:') || s.urls.includes('turns:'))
-                ).length;
-                const tcpTurnCount = iceServers.filter(s => 
-                    s.urls && s.urls.includes('?transport=tcp')
-                ).length;
+                const turnCount = iceServers.filter(s => s.urls?.includes('turn:')).length;
+                const tcpCount = iceServers.filter(s => s.urls?.includes('?transport=tcp')).length;
+                console.log(`✓ ICE from ${source.name}: ${iceServers.length} servers (${turnCount} TURN, ${tcpCount} TCP)`);
                 
-                console.log(`✓ ICE servers from ${source.name}: ${iceServers.length} servers (${turnCount} TURN, ${tcpTurnCount} TCP)`);
-                
-                CONFIG.peerConfig = {
-                    iceServers: iceServers,
-                    iceCandidatePoolSize: 10,
-                    iceTransportPolicy: 'all'
-                };
+                CONFIG.peerConfig = { iceServers, iceCandidatePoolSize: 10, iceTransportPolicy: 'all' };
                 CONFIG.iceSource = source.name;
-                
-                // Store for debugging
-                console.log('📡 Active ICE servers:', iceServers.map(s => s.urls).join(', '));
                 return;
             }
         } catch (error) {
             console.warn(`${source.name} failed:`, error.message);
-            continue;
         }
     }
     
-    // Ultimate fallback: Public STUN only
-    console.log('⚠️ All ICE sources failed, using public STUN fallback');
+    // Ultimate fallback
     CONFIG.peerConfig = {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' }
+            { urls: 'stun:stun1.l.google.com:19302' }
         ],
         iceCandidatePoolSize: 10
     };
     CONFIG.iceSource = 'public-stun';
 }
+
 
 
 async function getDirectTwilioServers() {
