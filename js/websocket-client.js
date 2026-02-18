@@ -288,7 +288,10 @@ const WebSocketClient = {
                     }
                     CallManager.handleCallEnded(message);
                     break;
-                    
+                  
+				case 'call-ended-confirm':
+					break;
+				  
                 case 'offer':
                     DebugConsole?.network('WebRTC', 'Received ICE offer');
                     if (WebRTCManager && typeof WebRTCManager.handleOffer === 'function') {
